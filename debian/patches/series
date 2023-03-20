@@ -10,3 +10,4 @@ gdb_bsd-kvm.c.diff
 #2bf3b79d05bf85e41cbdcb020bd1cc424f59dd9a.diff
 fork-inferior-fix
 #vm_min_max_address
+fix-compile-error.diff
