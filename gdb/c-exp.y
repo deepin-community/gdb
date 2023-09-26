@@ -1,5 +1,5 @@
 /* YACC parser for C expressions, for GDB.
-   Copyright (C) 1986-2022 Free Software Foundation, Inc.
+   Copyright (C) 1986-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -167,7 +167,7 @@ static struct stoken operator_stoken (const char *);
 static struct stoken typename_stoken (const char *);
 static void check_parameter_typelist (std::vector<struct type *> *);
 
-#ifdef YYBISON
+#if defined(YYBISON) && YYBISON < 30800
 static void c_print_token (FILE *file, int type, YYSTYPE value);
 #define YYPRINT(FILE, TYPE, VALUE) c_print_token (FILE, TYPE, VALUE)
 #endif
@@ -865,10 +865,10 @@ exp	:	COMPLEX_INT
 			{
 			  operation_up real
 			    = (make_operation<long_const_operation>
-			       (TYPE_TARGET_TYPE ($1.type), 0));
+			       ($1.type->target_type (), 0));
 			  operation_up imag
 			    = (make_operation<long_const_operation>
-			       (TYPE_TARGET_TYPE ($1.type), $1.val));
+			       ($1.type->target_type (), $1.val));
 			  pstate->push_new<complex_operation>
 			    (std::move (real), std::move (imag), $1.type);
 			}
@@ -905,8 +905,7 @@ exp	:	FLOAT
 
 exp	:	COMPLEX_FLOAT
 			{
-			  struct type *underlying
-			    = TYPE_TARGET_TYPE ($1.type);
+			  struct type *underlying = $1.type->target_type ();
 
 			  float_data val;
 			  target_float_from_host_double (val.data (),
@@ -955,9 +954,10 @@ exp	:	SIZEOF '(' type ')'	%prec UNARY
 			       or a reference type, the result is the size of
 			       the referenced type."  */
 			  if (TYPE_IS_REFERENCE (type))
-			    type = check_typedef (TYPE_TARGET_TYPE (type));
+			    type = check_typedef (type->target_type ());
+
 			  pstate->push_new<long_const_operation>
-			    (int_type, TYPE_LENGTH (type));
+			    (int_type, type->length ());
 			}
 	;
 
@@ -1036,8 +1036,7 @@ exp	:	string_exp
 				  break;
 				default:
 				  /* internal error */
-				  internal_error (__FILE__, __LINE__,
-						  "unrecognized type in string concatenation");
+				  internal_error ("unrecognized type in string concatenation");
 				}
 			    }
 
@@ -1075,7 +1074,7 @@ exp     :       FALSEKEYWORD
 block	:	BLOCKNAME
 			{
 			  if ($1.sym.symbol)
-			    $$ = SYMBOL_BLOCK_VALUE ($1.sym.symbol);
+			    $$ = $1.sym.symbol->value_block ();
 			  else
 			    error (_("No file or function \"%s\"."),
 				   copy_name ($1.stoken).c_str ());
@@ -1093,16 +1092,16 @@ block	:	block COLONCOLON name
 			    = lookup_symbol (copy.c_str (), $1,
 					     VAR_DOMAIN, NULL).symbol;
 
-			  if (!tem || SYMBOL_CLASS (tem) != LOC_BLOCK)
+			  if (!tem || tem->aclass () != LOC_BLOCK)
 			    error (_("No function \"%s\" in specified context."),
 				   copy.c_str ());
-			  $$ = SYMBOL_BLOCK_VALUE (tem); }
+			  $$ = tem->value_block (); }
 	;
 
 variable:	name_not_typename ENTRY
 			{ struct symbol *sym = $1.sym.symbol;
 
-			  if (sym == NULL || !SYMBOL_IS_ARGUMENT (sym)
+			  if (sym == NULL || !sym->is_argument ()
 			      || !symbol_read_needs_frame (sym))
 			    error (_("@entry can be used only for function "
 				     "parameters, not for \"%s\""),
@@ -1232,14 +1231,14 @@ variable:	name_not_typename
 				 is important for example for "p
 				 *__errno_location()".  */
 			      symbol *alias_target
-				= ((msymbol.minsym->type != mst_text_gnu_ifunc
-				    && msymbol.minsym->type != mst_data_gnu_ifunc)
+				= ((msymbol.minsym->type () != mst_text_gnu_ifunc
+				    && msymbol.minsym->type () != mst_data_gnu_ifunc)
 				   ? find_function_alias_target (msymbol)
 				   : NULL);
 			      if (alias_target != NULL)
 				{
 				  block_symbol bsym { alias_target,
-				    SYMBOL_BLOCK_VALUE (alias_target) };
+				    alias_target->value_block () };
 				  pstate->push_new<var_value_operation> (bsym);
 				}
 			      else
@@ -1780,11 +1779,12 @@ oper:	OPERATOR NEW
 	|	OPERATOR OBJC_LBRAC ']'
 			{ $$ = operator_stoken ("[]"); }
 	|	OPERATOR conversion_type_id
-			{ string_file buf;
-
+			{
+			  string_file buf;
 			  c_print_type ($2, NULL, &buf, -1, 0,
+					pstate->language ()->la_language,
 					&type_print_raw_options);
-			  std::string name = std::move (buf.string ());
+			  std::string name = buf.release ();
 
 			  /* This also needs canonicalization.  */
 			  gdb::unique_xmalloc_ptr<char> canon
@@ -1928,7 +1928,6 @@ parse_number (struct parser_state *par_state,
 {
   ULONGEST n = 0;
   ULONGEST prevn = 0;
-  ULONGEST un;
 
   int i = 0;
   int c;
@@ -1944,9 +1943,6 @@ parse_number (struct parser_state *par_state,
   /* We have found a "L" or "U" (or "i") suffix.  */
   int found_suffix = 0;
 
-  ULONGEST high_bit;
-  struct type *signed_type;
-  struct type *unsigned_type;
   char *p;
 
   p = (char *) alloca (len);
@@ -2094,18 +2090,12 @@ parse_number (struct parser_state *par_state,
       if (i >= base)
 	return ERROR;		/* Invalid digit in this base */
 
-      /* Portably test for overflow (only works for nonzero values, so make
-	 a second check for zero).  FIXME: Can't we just make n and prevn
-	 unsigned and avoid this?  */
-      if (c != 'l' && c != 'u' && c != 'i' && (prevn >= n) && n != 0)
-	unsigned_p = 1;		/* Try something unsigned */
-
-      /* Portably test for unsigned overflow.
-	 FIXME: This check is wrong; for example it doesn't find overflow
-	 on 0x123456789 when LONGEST is 32 bits.  */
-      if (c != 'l' && c != 'u' && c != 'i' && n != 0)
-	{	
-	  if (unsigned_p && prevn >= n)
+      if (c != 'l' && c != 'u' && c != 'i')
+	{
+	  /* Test for overflow.  */
+	  if (prevn == 0 && n == 0)
+	    ;
+	  else if (prevn >= n)
 	    error (_("Numeric constant too large."));
 	}
       prevn = n;
@@ -2122,58 +2112,45 @@ parse_number (struct parser_state *par_state,
      or gdbarch_long_bit will be that big, sometimes not.  To deal with
      the case where it is we just always shift the value more than
      once, with fewer bits each time.  */
-
-  un = n >> 2;
-  if (long_p == 0
-      && (un >> (gdbarch_int_bit (par_state->gdbarch ()) - 2)) == 0)
-    {
-      high_bit
-	= ((ULONGEST)1) << (gdbarch_int_bit (par_state->gdbarch ()) - 1);
-
-      /* A large decimal (not hex or octal) constant (between INT_MAX
-	 and UINT_MAX) is a long or unsigned long, according to ANSI,
-	 never an unsigned int, but this code treats it as unsigned
-	 int.  This probably should be fixed.  GCC gives a warning on
-	 such constants.  */
-
-      unsigned_type = parse_type (par_state)->builtin_unsigned_int;
-      signed_type = parse_type (par_state)->builtin_int;
-    }
-  else if (long_p <= 1
-	   && (un >> (gdbarch_long_bit (par_state->gdbarch ()) - 2)) == 0)
-    {
-      high_bit
-	= ((ULONGEST)1) << (gdbarch_long_bit (par_state->gdbarch ()) - 1);
-      unsigned_type = parse_type (par_state)->builtin_unsigned_long;
-      signed_type = parse_type (par_state)->builtin_long;
-    }
+  int int_bits = gdbarch_int_bit (par_state->gdbarch ());
+  int long_bits = gdbarch_long_bit (par_state->gdbarch ());
+  int long_long_bits = gdbarch_long_long_bit (par_state->gdbarch ());
+  bool have_signed
+    /* No 'u' suffix.  */
+    = !unsigned_p;
+  bool have_unsigned
+    = ((/* 'u' suffix.  */
+	unsigned_p)
+       || (/* Not a decimal.  */
+	   base != 10)
+       || (/* Allowed as a convenience, in case decimal doesn't fit in largest
+	      signed type.  */
+	   !fits_in_type (1, n, long_long_bits, true)));
+  bool have_int
+    /* No 'l' or 'll' suffix.  */
+    = long_p == 0;
+  bool have_long
+    /* No 'll' suffix.  */
+    = long_p <= 1;
+  if (have_int && have_signed && fits_in_type (1, n, int_bits, true))
+    putithere->typed_val_int.type = parse_type (par_state)->builtin_int;
+  else if (have_int && have_unsigned && fits_in_type (1, n, int_bits, false))
+    putithere->typed_val_int.type
+      = parse_type (par_state)->builtin_unsigned_int;
+  else if (have_long && have_signed && fits_in_type (1, n, long_bits, true))
+    putithere->typed_val_int.type = parse_type (par_state)->builtin_long;
+  else if (have_long && have_unsigned && fits_in_type (1, n, long_bits, false))
+    putithere->typed_val_int.type
+      = parse_type (par_state)->builtin_unsigned_long;
+  else if (have_signed && fits_in_type (1, n, long_long_bits, true))
+    putithere->typed_val_int.type
+      = parse_type (par_state)->builtin_long_long;
+  else if (have_unsigned && fits_in_type (1, n, long_long_bits, false))
+    putithere->typed_val_int.type
+      = parse_type (par_state)->builtin_unsigned_long_long;
   else
-    {
-      int shift;
-      if (sizeof (ULONGEST) * HOST_CHAR_BIT
-	  < gdbarch_long_long_bit (par_state->gdbarch ()))
-	/* A long long does not fit in a LONGEST.  */
-	shift = (sizeof (ULONGEST) * HOST_CHAR_BIT - 1);
-      else
-	shift = (gdbarch_long_long_bit (par_state->gdbarch ()) - 1);
-      high_bit = (ULONGEST) 1 << shift;
-      unsigned_type = parse_type (par_state)->builtin_unsigned_long_long;
-      signed_type = parse_type (par_state)->builtin_long_long;
-    }
-
-   putithere->typed_val_int.val = n;
-
-   /* If the high bit of the worked out type is set then this number
-      has to be unsigned. */
-
-   if (unsigned_p || (n & high_bit))
-     {
-       putithere->typed_val_int.type = unsigned_type;
-     }
-   else
-     {
-       putithere->typed_val_int.type = signed_type;
-     }
+    error (_("Numeric constant too large."));
+  putithere->typed_val_int.val = n;
 
    if (imaginary_p)
      putithere->typed_val_int.type
@@ -2644,7 +2621,6 @@ lex_one_token (struct parser_state *par_state, bool *is_quoted_name)
 {
   int c;
   int namelen;
-  unsigned int i;
   const char *tokstart;
   bool saw_structop = last_was_structop;
 
@@ -2667,33 +2643,33 @@ lex_one_token (struct parser_state *par_state, bool *is_quoted_name)
 
   tokstart = pstate->lexptr;
   /* See if it is a special token of length 3.  */
-  for (i = 0; i < sizeof tokentab3 / sizeof tokentab3[0]; i++)
-    if (strncmp (tokstart, tokentab3[i].oper, 3) == 0)
+  for (const auto &token : tokentab3)
+    if (strncmp (tokstart, token.oper, 3) == 0)
       {
-	if ((tokentab3[i].flags & FLAG_CXX) != 0
+	if ((token.flags & FLAG_CXX) != 0
 	    && par_state->language ()->la_language != language_cplus)
 	  break;
-	gdb_assert ((tokentab3[i].flags & FLAG_C) == 0);
+	gdb_assert ((token.flags & FLAG_C) == 0);
 
 	pstate->lexptr += 3;
-	yylval.opcode = tokentab3[i].opcode;
-	return tokentab3[i].token;
+	yylval.opcode = token.opcode;
+	return token.token;
       }
 
   /* See if it is a special token of length 2.  */
-  for (i = 0; i < sizeof tokentab2 / sizeof tokentab2[0]; i++)
-    if (strncmp (tokstart, tokentab2[i].oper, 2) == 0)
+  for (const auto &token : tokentab2)
+    if (strncmp (tokstart, token.oper, 2) == 0)
       {
-	if ((tokentab2[i].flags & FLAG_CXX) != 0
+	if ((token.flags & FLAG_CXX) != 0
 	    && par_state->language ()->la_language != language_cplus)
 	  break;
-	gdb_assert ((tokentab2[i].flags & FLAG_C) == 0);
+	gdb_assert ((token.flags & FLAG_C) == 0);
 
 	pstate->lexptr += 2;
-	yylval.opcode = tokentab2[i].opcode;
-	if (tokentab2[i].token == ARROW)
+	yylval.opcode = token.opcode;
+	if (token.token == ARROW)
 	  last_was_structop = 1;
-	return tokentab2[i].token;
+	return token.token;
       }
 
   switch (c = *tokstart)
@@ -2979,18 +2955,18 @@ lex_one_token (struct parser_state *par_state, bool *is_quoted_name)
 
   /* Catch specific keywords.  */
   std::string copy = copy_name (yylval.sval);
-  for (i = 0; i < sizeof ident_tokens / sizeof ident_tokens[0]; i++)
-    if (copy == ident_tokens[i].oper)
+  for (const auto &token : ident_tokens)
+    if (copy == token.oper)
       {
-	if ((ident_tokens[i].flags & FLAG_CXX) != 0
+	if ((token.flags & FLAG_CXX) != 0
 	    && par_state->language ()->la_language != language_cplus)
 	  break;
-	if ((ident_tokens[i].flags & FLAG_C) != 0
+	if ((token.flags & FLAG_C) != 0
 	    && par_state->language ()->la_language != language_c
 	    && par_state->language ()->la_language != language_objc)
 	  break;
 
-	if ((ident_tokens[i].flags & FLAG_SHADOW) != 0)
+	if ((token.flags & FLAG_SHADOW) != 0)
 	  {
 	    struct field_of_this_result is_a_field_of_this;
 
@@ -3009,8 +2985,8 @@ lex_one_token (struct parser_state *par_state, bool *is_quoted_name)
 
 	/* It is ok to always set this, even though we don't always
 	   strictly need to.  */
-	yylval.opcode = ident_tokens[i].opcode;
-	return ident_tokens[i].token;
+	yylval.opcode = token.opcode;
+	return token.token;
       }
 
   if (*tokstart == '$')
@@ -3068,7 +3044,7 @@ classify_name (struct parser_state *par_state, const struct block *block,
 			par_state->language ()->name_of_this ()
 			? &is_a_field_of_this : NULL);
 
-  if (bsym.symbol && SYMBOL_CLASS (bsym.symbol) == LOC_BLOCK)
+  if (bsym.symbol && bsym.symbol->aclass () == LOC_BLOCK)
     {
       yylval.ssym.sym = bsym;
       yylval.ssym.is_a_field_of_this = is_a_field_of_this.type != NULL;
@@ -3091,7 +3067,7 @@ classify_name (struct parser_state *par_state, const struct block *block,
 				&inner_is_a_field_of_this);
 	  if (bsym.symbol != NULL)
 	    {
-	      yylval.tsym.type = SYMBOL_TYPE (bsym.symbol);
+	      yylval.tsym.type = bsym.symbol->type ();
 	      return TYPENAME;
 	    }
 	}
@@ -3110,16 +3086,17 @@ classify_name (struct parser_state *par_state, const struct block *block,
 	  symtab = lookup_symtab (copy.c_str ());
 	  if (symtab)
 	    {
-	      yylval.bval = BLOCKVECTOR_BLOCK (SYMTAB_BLOCKVECTOR (symtab),
-					       STATIC_BLOCK);
+	      yylval.bval
+		= symtab->compunit ()->blockvector ()->static_block ();
+
 	      return FILENAME;
 	    }
 	}
     }
 
-  if (bsym.symbol && SYMBOL_CLASS (bsym.symbol) == LOC_TYPEDEF)
+  if (bsym.symbol && bsym.symbol->aclass () == LOC_TYPEDEF)
     {
-      yylval.tsym.type = SYMBOL_TYPE (bsym.symbol);
+      yylval.tsym.type = bsym.symbol->type ();
       return TYPENAME;
     }
 
@@ -3136,7 +3113,7 @@ classify_name (struct parser_state *par_state, const struct block *block,
 	  sym = lookup_struct_typedef (copy.c_str (),
 				       par_state->expression_context_block, 1);
 	  if (sym)
-	    yylval.theclass.type = SYMBOL_TYPE (sym);
+	    yylval.theclass.type = sym->type ();
 	  return CLASSNAME;
 	}
     }
@@ -3212,7 +3189,7 @@ classify_inner_name (struct parser_state *par_state,
       return ERROR;
     }
 
-  switch (SYMBOL_CLASS (yylval.ssym.sym.symbol))
+  switch (yylval.ssym.sym.symbol->aclass ())
     {
     case LOC_BLOCK:
     case LOC_LABEL:
@@ -3232,13 +3209,13 @@ classify_inner_name (struct parser_state *par_state,
       return ERROR;
 
     case LOC_TYPEDEF:
-      yylval.tsym.type = SYMBOL_TYPE (yylval.ssym.sym.symbol);
+      yylval.tsym.type = yylval.ssym.sym.symbol->type ();
       return TYPENAME;
 
     default:
       return NAME;
     }
-  internal_error (__FILE__, __LINE__, _("not reached"));
+  internal_error (_("not reached"));
 }
 
 /* The outer level of a two-level lexer.  This calls the inner lexer
@@ -3446,7 +3423,8 @@ c_parse (struct parser_state *par_state)
   return result;
 }
 
-#ifdef YYBISON
+#if defined(YYBISON) && YYBISON < 30800
+
 
 /* This is called via the YYPRINT macro when parser debugging is
    enabled.  It prints a token's value.  */

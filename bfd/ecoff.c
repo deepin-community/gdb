@@ -1,5 +1,5 @@
 /* Generic ECOFF (Extended-COFF) routines.
-   Copyright (C) 1990-2021 Free Software Foundation, Inc.
+   Copyright (C) 1990-2022 Free Software Foundation, Inc.
    Original version by Per Bothner.
    Full support added by Ian Lance Taylor, ian@cygnus.com.
 
@@ -1389,7 +1389,7 @@ _bfd_ecoff_print_symbol (bfd *abfd,
 	  (*debug_swap->swap_sym_in) (abfd, ecoffsymbol (symbol)->native,
 				      &ecoff_sym);
 	  fprintf (file, "ecoff local ");
-	  fprintf_vma (file, (bfd_vma) ecoff_sym.value);
+	  bfd_fprintf_vma (abfd, file, ecoff_sym.value);
 	  fprintf (file, " %x %x", (unsigned) ecoff_sym.st,
 		   (unsigned) ecoff_sym.sc);
 	}
@@ -1400,7 +1400,7 @@ _bfd_ecoff_print_symbol (bfd *abfd,
 	  (*debug_swap->swap_ext_in) (abfd, ecoffsymbol (symbol)->native,
 				      &ecoff_ext);
 	  fprintf (file, "ecoff extern ");
-	  fprintf_vma (file, (bfd_vma) ecoff_ext.asym.value);
+	  bfd_fprintf_vma (abfd, file, ecoff_ext.asym.value);
 	  fprintf (file, " %x %x", (unsigned) ecoff_ext.asym.st,
 		   (unsigned) ecoff_ext.asym.sc);
 	}
@@ -1443,7 +1443,7 @@ _bfd_ecoff_print_symbol (bfd *abfd,
 
 	fprintf (file, "[%3d] %c ",
 		 pos, type);
-	fprintf_vma (file, (bfd_vma) ecoff_ext.asym.value);
+	bfd_fprintf_vma (abfd, file, ecoff_ext.asym.value);
 	fprintf (file, " st %x sc %x indx %x %c%c%c %s",
 		 (unsigned) ecoff_ext.asym.st,
 		 (unsigned) ecoff_ext.asym.sc,
@@ -1606,22 +1606,17 @@ ecoff_slurp_reloc_table (bfd *abfd,
       (*backend->swap_reloc_in) (abfd,
 				 external_relocs + i * external_reloc_size,
 				 &intern);
+      rptr->sym_ptr_ptr = bfd_abs_section_ptr->symbol_ptr_ptr;
+      rptr->addend = 0;
 
       if (intern.r_extern)
 	{
 	  /* r_symndx is an index into the external symbols.  */
-	  BFD_ASSERT (intern.r_symndx >= 0
-		      && (intern.r_symndx
-			  < (ecoff_data (abfd)
-			     ->debug_info.symbolic_header.iextMax)));
-	  rptr->sym_ptr_ptr = symbols + intern.r_symndx;
-	  rptr->addend = 0;
-	}
-      else if (intern.r_symndx == RELOC_SECTION_NONE
-	       || intern.r_symndx == RELOC_SECTION_ABS)
-	{
-	  rptr->sym_ptr_ptr = bfd_abs_section_ptr->symbol_ptr_ptr;
-	  rptr->addend = 0;
+	  if (symbols != NULL
+	      && intern.r_symndx >= 0
+	      && (intern.r_symndx
+		  < (ecoff_data (abfd)->debug_info.symbolic_header.iextMax)))
+	    rptr->sym_ptr_ptr = symbols + intern.r_symndx;
 	}
       else
 	{
@@ -1645,15 +1640,20 @@ ecoff_slurp_reloc_table (bfd *abfd,
 	    case RELOC_SECTION_FINI:  sec_name = _FINI;  break;
 	    case RELOC_SECTION_LITA:  sec_name = _LITA;  break;
 	    case RELOC_SECTION_RCONST: sec_name = _RCONST; break;
-	    default: abort ();
+	    default:
+	      sec_name = NULL;
+	      break;
 	    }
 
-	  sec = bfd_get_section_by_name (abfd, sec_name);
-	  if (sec == NULL)
-	    abort ();
-	  rptr->sym_ptr_ptr = sec->symbol_ptr_ptr;
-
-	  rptr->addend = - bfd_section_vma (sec);
+	  if (sec_name != NULL)
+	    {
+	      sec = bfd_get_section_by_name (abfd, sec_name);
+	      if (sec != NULL)
+		{
+		  rptr->sym_ptr_ptr = sec->symbol_ptr_ptr;
+		  rptr->addend = - bfd_section_vma (sec);
+		}
+	    }
 	}
 
       rptr->address = intern.r_vaddr - bfd_section_vma (section);
@@ -2633,7 +2633,7 @@ _bfd_ecoff_write_object_contents (bfd *abfd)
 	    continue;
 
 	  amt = current->reloc_count * external_reloc_size;
-	  reloc_buff = bfd_alloc (abfd, amt);
+	  reloc_buff = bfd_zalloc (abfd, amt);
 	  if (reloc_buff == NULL)
 	    goto error_return;
 
@@ -3640,7 +3640,9 @@ ecoff_link_add_archive_symbols (bfd *abfd, struct bfd_link_info *info)
 	  hash = srch;
 	}
 
-      element = (*backend->get_elt_at_filepos) (abfd, (file_ptr) file_offset);
+      element = (*backend->get_elt_at_filepos) (abfd,
+						(file_ptr) file_offset,
+						info);
       if (element == NULL)
 	return false;
 

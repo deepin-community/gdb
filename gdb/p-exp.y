@@ -1,5 +1,5 @@
 /* YACC parser for Pascal expressions, for GDB.
-   Copyright (C) 2000-2022 Free Software Foundation, Inc.
+   Copyright (C) 2000-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -220,7 +220,7 @@ exp1	:	exp
 exp	:	exp '^'   %prec UNARY
 			{ pstate->wrap<unop_ind_operation> ();
 			  if (current_type)
-			    current_type = TYPE_TARGET_TYPE (current_type); }
+			    current_type = current_type->target_type (); }
 	;
 
 exp	:	'@' exp    %prec UNARY
@@ -260,7 +260,7 @@ exp	:	field_exp FIELDNAME
 			      while (current_type->code ()
 				     == TYPE_CODE_PTR)
 				current_type =
-				  TYPE_TARGET_TYPE (current_type);
+				  current_type->target_type ();
 			      current_type = lookup_struct_elt_type (
 				current_type, $2.ptr, 0);
 			    }
@@ -278,7 +278,7 @@ exp	:	field_exp name
 			      while (current_type->code ()
 				     == TYPE_CODE_PTR)
 				current_type =
-				  TYPE_TARGET_TYPE (current_type);
+				  current_type->target_type ();
 			      current_type = lookup_struct_elt_type (
 				current_type, $2.ptr, 0);
 			    }
@@ -321,7 +321,7 @@ exp	:	exp '['
 			{ pop_current_type ();
 			  pstate->wrap2<subscript_operation> ();
 			  if (current_type)
-			    current_type = TYPE_TARGET_TYPE (current_type); }
+			    current_type = current_type->target_type (); }
 	;
 
 exp	:	exp '('
@@ -337,7 +337,7 @@ exp	:	exp '('
 			    (pstate->pop (), std::move (args));
 			  pop_current_type ();
 			  if (current_type)
- 	  		    current_type = TYPE_TARGET_TYPE (current_type);
+			    current_type = current_type->target_type ();
 			}
 	;
 
@@ -353,7 +353,7 @@ exp	:	type '(' exp ')' %prec UNARY
 			    {
 			      /* Allow automatic dereference of classes.  */
 			      if ((current_type->code () == TYPE_CODE_PTR)
-				  && (TYPE_TARGET_TYPE (current_type)->code () == TYPE_CODE_STRUCT)
+				  && (current_type->target_type ()->code () == TYPE_CODE_STRUCT)
 				  && (($1)->code () == TYPE_CODE_STRUCT))
 				pstate->wrap<unop_ind_operation> ();
 			    }
@@ -553,7 +553,7 @@ exp	:	SIZEOF '(' type ')'	%prec UNARY
 			  $3 = check_typedef ($3);
 			  pstate->push_new<long_const_operation>
 			    (parse_type (pstate)->builtin_int,
-			     TYPE_LENGTH ($3)); }
+			     $3->length ()); }
 	;
 
 exp	:	SIZEOF  '(' exp ')'      %prec UNARY
@@ -598,7 +598,7 @@ exp	:	THIS
 			    {
 			      if (this_type->code () == TYPE_CODE_PTR)
 				{
-				  this_type = TYPE_TARGET_TYPE (this_type);
+				  this_type = this_type->target_type ();
 				  pstate->wrap<unop_ind_operation> ();
 				}
 			    }
@@ -612,15 +612,15 @@ exp	:	THIS
 block	:	BLOCKNAME
 			{
 			  if ($1.sym.symbol != 0)
-			      $$ = SYMBOL_BLOCK_VALUE ($1.sym.symbol);
+			      $$ = $1.sym.symbol->value_block ();
 			  else
 			    {
 			      std::string copy = copy_name ($1.stoken);
 			      struct symtab *tem =
 				  lookup_symtab (copy.c_str ());
 			      if (tem)
-				$$ = BLOCKVECTOR_BLOCK (SYMTAB_BLOCKVECTOR (tem),
-							STATIC_BLOCK);
+				$$ = (tem->compunit ()->blockvector ()
+				      ->static_block ());
 			      else
 				error (_("No file or function \"%s\"."),
 				       copy.c_str ());
@@ -635,10 +635,10 @@ block	:	block COLONCOLON name
 			    = lookup_symbol (copy.c_str (), $1,
 					     VAR_DOMAIN, NULL).symbol;
 
-			  if (!tem || SYMBOL_CLASS (tem) != LOC_BLOCK)
+			  if (!tem || tem->aclass () != LOC_BLOCK)
 			    error (_("No function \"%s\" in specified context."),
 				   copy.c_str ());
-			  $$ = SYMBOL_BLOCK_VALUE (tem); }
+			  $$ = tem->value_block (); }
 	;
 
 variable:	block COLONCOLON name
@@ -690,7 +690,7 @@ variable:	name_not_typename
 				pstate->block_tracker->update (sym);
 
 			      pstate->push_new<var_value_operation> (sym);
-			      current_type = sym.symbol->type; }
+			      current_type = sym.symbol->type (); }
 			  else if ($1.is_a_field_of_this)
 			    {
 			      struct value * this_val;
@@ -802,11 +802,8 @@ static int
 parse_number (struct parser_state *par_state,
 	      const char *p, int len, int parsed_float, YYSTYPE *putithere)
 {
-  /* FIXME: Shouldn't these be unsigned?  We don't deal with negative values
-     here, and we do kind of silly things like cast to unsigned.  */
-  LONGEST n = 0;
-  LONGEST prevn = 0;
-  ULONGEST un;
+  ULONGEST n = 0;
+  ULONGEST prevn = 0;
 
   int i = 0;
   int c;
@@ -818,10 +815,6 @@ parse_number (struct parser_state *par_state,
 
   /* We have found a "L" or "U" suffix.  */
   int found_suffix = 0;
-
-  ULONGEST high_bit;
-  struct type *signed_type;
-  struct type *unsigned_type;
 
   if (parsed_float)
     {
@@ -854,7 +847,7 @@ parse_number (struct parser_state *par_state,
     }
 
   /* Handle base-switching prefixes 0x, 0t, 0d, 0.  */
-  if (p[0] == '0')
+  if (p[0] == '0' && len > 1)
     switch (p[1])
       {
       case 'x':
@@ -921,18 +914,12 @@ parse_number (struct parser_state *par_state,
       if (i >= base)
 	return ERROR;		/* Invalid digit in this base.  */
 
-      /* Portably test for overflow (only works for nonzero values, so make
-	 a second check for zero).  FIXME: Can't we just make n and prevn
-	 unsigned and avoid this?  */
-      if (c != 'l' && c != 'u' && (prevn >= n) && n != 0)
-	unsigned_p = 1;		/* Try something unsigned.  */
-
-      /* Portably test for unsigned overflow.
-	 FIXME: This check is wrong; for example it doesn't find overflow
-	 on 0x123456789 when LONGEST is 32 bits.  */
-      if (c != 'l' && c != 'u' && n != 0)
+      if (c != 'l' && c != 'u')
 	{
-	  if ((unsigned_p && (ULONGEST) prevn >= (ULONGEST) n))
+	  /* Test for overflow.  */
+	  if (prevn == 0 && n == 0)
+	    ;
+	  else if (prevn >= n)
 	    error (_("Numeric constant too large."));
 	}
       prevn = n;
@@ -950,57 +937,31 @@ parse_number (struct parser_state *par_state,
      the case where it is we just always shift the value more than
      once, with fewer bits each time.  */
 
-  un = (ULONGEST)n >> 2;
-  if (long_p == 0
-      && (un >> (gdbarch_int_bit (par_state->gdbarch ()) - 2)) == 0)
-    {
-      high_bit
-	= ((ULONGEST)1) << (gdbarch_int_bit (par_state->gdbarch ()) - 1);
-
-      /* A large decimal (not hex or octal) constant (between INT_MAX
-	 and UINT_MAX) is a long or unsigned long, according to ANSI,
-	 never an unsigned int, but this code treats it as unsigned
-	 int.  This probably should be fixed.  GCC gives a warning on
-	 such constants.  */
-
-      unsigned_type = parse_type (par_state)->builtin_unsigned_int;
-      signed_type = parse_type (par_state)->builtin_int;
-    }
-  else if (long_p <= 1
-	   && (un >> (gdbarch_long_bit (par_state->gdbarch ()) - 2)) == 0)
-    {
-      high_bit
-	= ((ULONGEST)1) << (gdbarch_long_bit (par_state->gdbarch ()) - 1);
-      unsigned_type = parse_type (par_state)->builtin_unsigned_long;
-      signed_type = parse_type (par_state)->builtin_long;
-    }
+  int int_bits = gdbarch_int_bit (par_state->gdbarch ());
+  int long_bits = gdbarch_long_bit (par_state->gdbarch ());
+  int long_long_bits = gdbarch_long_long_bit (par_state->gdbarch ());
+  bool have_signed = !unsigned_p;
+  bool have_int = long_p == 0;
+  bool have_long = long_p <= 1;
+  if (have_int && have_signed && fits_in_type (1, n, int_bits, true))
+    putithere->typed_val_int.type = parse_type (par_state)->builtin_int;
+  else if (have_int && fits_in_type (1, n, int_bits, false))
+    putithere->typed_val_int.type
+      = parse_type (par_state)->builtin_unsigned_int;
+  else if (have_long && have_signed && fits_in_type (1, n, long_bits, true))
+    putithere->typed_val_int.type = parse_type (par_state)->builtin_long;
+  else if (have_long && fits_in_type (1, n, long_bits, false))
+    putithere->typed_val_int.type
+      = parse_type (par_state)->builtin_unsigned_long;
+  else if (have_signed && fits_in_type (1, n, long_long_bits, true))
+    putithere->typed_val_int.type
+      = parse_type (par_state)->builtin_long_long;
+  else if (fits_in_type (1, n, long_long_bits, false))
+    putithere->typed_val_int.type
+      = parse_type (par_state)->builtin_unsigned_long_long;
   else
-    {
-      int shift;
-      if (sizeof (ULONGEST) * HOST_CHAR_BIT
-	  < gdbarch_long_long_bit (par_state->gdbarch ()))
-	/* A long long does not fit in a LONGEST.  */
-	shift = (sizeof (ULONGEST) * HOST_CHAR_BIT - 1);
-      else
-	shift = (gdbarch_long_long_bit (par_state->gdbarch ()) - 1);
-      high_bit = (ULONGEST) 1 << shift;
-      unsigned_type = parse_type (par_state)->builtin_unsigned_long_long;
-      signed_type = parse_type (par_state)->builtin_long_long;
-    }
-
-   putithere->typed_val_int.val = n;
-
-   /* If the high bit of the worked out type is set then this number
-      has to be unsigned.  */
-
-   if (unsigned_p || (n & high_bit))
-     {
-       putithere->typed_val_int.type = unsigned_type;
-     }
-   else
-     {
-       putithere->typed_val_int.type = signed_type;
-     }
+    error (_("Numeric constant too large."));
+  putithere->typed_val_int.val = n;
 
    return INT;
 }
@@ -1107,28 +1068,28 @@ yylex (void)
 
   /* See if it is a special token of length 3.  */
   if (explen > 2)
-    for (int i = 0; i < sizeof (tokentab3) / sizeof (tokentab3[0]); i++)
-      if (strncasecmp (tokstart, tokentab3[i].oper, 3) == 0
-	  && (!isalpha (tokentab3[i].oper[0]) || explen == 3
+    for (const auto &token : tokentab3)
+      if (strncasecmp (tokstart, token.oper, 3) == 0
+	  && (!isalpha (token.oper[0]) || explen == 3
 	      || (!isalpha (tokstart[3])
 		  && !isdigit (tokstart[3]) && tokstart[3] != '_')))
 	{
 	  pstate->lexptr += 3;
-	  yylval.opcode = tokentab3[i].opcode;
-	  return tokentab3[i].token;
+	  yylval.opcode = token.opcode;
+	  return token.token;
 	}
 
   /* See if it is a special token of length 2.  */
   if (explen > 1)
-  for (int i = 0; i < sizeof (tokentab2) / sizeof (tokentab2[0]); i++)
-      if (strncasecmp (tokstart, tokentab2[i].oper, 2) == 0
-	  && (!isalpha (tokentab2[i].oper[0]) || explen == 2
+    for (const auto &token : tokentab2)
+      if (strncasecmp (tokstart, token.oper, 2) == 0
+	  && (!isalpha (token.oper[0]) || explen == 2
 	      || (!isalpha (tokstart[2])
 		  && !isdigit (tokstart[2]) && tokstart[2] != '_')))
 	{
 	  pstate->lexptr += 2;
-	  yylval.opcode = tokentab2[i].opcode;
-	  return tokentab2[i].token;
+	  yylval.opcode = token.opcode;
+	  return token.token;
 	}
 
   switch (c = *tokstart)
@@ -1544,7 +1505,7 @@ yylex (void)
     /* Call lookup_symtab, not lookup_partial_symtab, in case there are
        no psymtabs (coff, xcoff, or some future change to blow away the
        psymtabs once once symbols are read).  */
-    if ((sym && SYMBOL_CLASS (sym) == LOC_BLOCK)
+    if ((sym && sym->aclass () == LOC_BLOCK)
 	|| lookup_symtab (tmp.c_str ()))
       {
 	yylval.ssym.sym.symbol = sym;
@@ -1553,7 +1514,7 @@ yylex (void)
 	free (uptokstart);
 	return BLOCKNAME;
       }
-    if (sym && SYMBOL_CLASS (sym) == LOC_TYPEDEF)
+    if (sym && sym->aclass () == LOC_TYPEDEF)
 	{
 #if 1
 	  /* Despite the following flaw, we need to keep this code enabled.
@@ -1622,7 +1583,7 @@ yylex (void)
 					 VAR_DOMAIN, NULL).symbol;
 		      if (cur_sym)
 			{
-			  if (SYMBOL_CLASS (cur_sym) == LOC_TYPEDEF)
+			  if (cur_sym->aclass () == LOC_TYPEDEF)
 			    {
 			      best_sym = cur_sym;
 			      pstate->lexptr = p;
@@ -1640,9 +1601,9 @@ yylex (void)
 		break;
 	    }
 
-	  yylval.tsym.type = SYMBOL_TYPE (best_sym);
+	  yylval.tsym.type = best_sym->type ();
 #else /* not 0 */
-	  yylval.tsym.type = SYMBOL_TYPE (sym);
+	  yylval.tsym.type = sym->type ();
 #endif /* not 0 */
 	  free (uptokstart);
 	  return TYPENAME;

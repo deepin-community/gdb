@@ -1,6 +1,6 @@
 /* RISC-V simulator.
 
-   Copyright (C) 2005-2022 Free Software Foundation, Inc.
+   Copyright (C) 2005-2023 Free Software Foundation, Inc.
    Contributed by Mike Frysinger.
 
    This file is part of simulators.
@@ -34,8 +34,6 @@
 #include "opcode/riscv.h"
 
 #include "gdb/sim-riscv.h"
-
-#include "targ-vals.h"
 
 #define TRACE_REG(cpu, reg) \
   TRACE_REGISTER (cpu, "wrote %s = %#" PRIxTW, riscv_gpr_names_abi[reg], \
@@ -133,14 +131,14 @@ store_csr (SIM_CPU *cpu, const char *name, int csr, unsigned_word *reg,
 static inline unsigned_word
 ashiftrt (unsigned_word val, unsigned_word shift)
 {
-  unsigned32 sign = (val & 0x80000000) ? ~(0xfffffffful >> shift) : 0;
+  uint32_t sign = (val & 0x80000000) ? ~(0xfffffffful >> shift) : 0;
   return (val >> shift) | sign;
 }
 
 static inline unsigned_word
 ashiftrt64 (unsigned_word val, unsigned_word shift)
 {
-  unsigned64 sign =
+  uint64_t sign =
     (val & 0x8000000000000000ull) ? ~(0xffffffffffffffffull >> shift) : 0;
   return (val >> shift) | sign;
 }
@@ -157,7 +155,7 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
   const char *rs2_name = riscv_gpr_names_abi[rs2];
   unsigned int csr = (iw >> OP_SH_CSR) & OP_MASK_CSR;
   unsigned_word i_imm = EXTRACT_ITYPE_IMM (iw);
-  unsigned_word u_imm = EXTRACT_UTYPE_IMM ((unsigned64) iw);
+  unsigned_word u_imm = EXTRACT_UTYPE_IMM ((uint64_t) iw);
   unsigned_word s_imm = EXTRACT_STYPE_IMM (iw);
   unsigned_word sb_imm = EXTRACT_BTYPE_IMM (iw);
   unsigned_word shamt_imm = ((iw >> OP_SH_SHAMT) & OP_MASK_SHAMT);
@@ -254,7 +252,7 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
       store_rd (cpu, rd, EXTEND32 (
-	(unsigned32) cpu->regs[rs1] << (cpu->regs[rs2] & 0x1f)));
+	(uint32_t) cpu->regs[rs1] << (cpu->regs[rs2] & 0x1f)));
       break;
     case MATCH_SLLI:
       TRACE_INSN (cpu, "slli %s, %s, %" PRIiTW ";  // %s = %s << %#" PRIxTW,
@@ -267,7 +265,7 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
       TRACE_INSN (cpu, "slliw %s, %s, %" PRIiTW ";  // %s = %s << %#" PRIxTW,
 		  rd_name, rs1_name, shamt_imm, rd_name, rs1_name, shamt_imm);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
-      store_rd (cpu, rd, EXTEND32 ((unsigned32) cpu->regs[rs1] << shamt_imm));
+      store_rd (cpu, rd, EXTEND32 ((uint32_t) cpu->regs[rs1] << shamt_imm));
       break;
     case MATCH_SRL:
       TRACE_INSN (cpu, "srl %s, %s, %s;  // %s = %s >> %s",
@@ -280,7 +278,7 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
       store_rd (cpu, rd, EXTEND32 (
-	(unsigned32) cpu->regs[rs1] >> (cpu->regs[rs2] & 0x1f)));
+	(uint32_t) cpu->regs[rs1] >> (cpu->regs[rs2] & 0x1f)));
       break;
     case MATCH_SRLI:
       TRACE_INSN (cpu, "srli %s, %s, %" PRIiTW ";  // %s = %s >> %#" PRIxTW,
@@ -293,7 +291,7 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
       TRACE_INSN (cpu, "srliw %s, %s, %" PRIiTW ";  // %s = %s >> %#" PRIxTW,
 		  rd_name, rs1_name, shamt_imm, rd_name, rs1_name, shamt_imm);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
-      store_rd (cpu, rd, EXTEND32 ((unsigned32) cpu->regs[rs1] >> shamt_imm));
+      store_rd (cpu, rd, EXTEND32 ((uint32_t) cpu->regs[rs1] >> shamt_imm));
       break;
     case MATCH_SRA:
       TRACE_INSN (cpu, "sra %s, %s, %s;  // %s = %s >>> %s",
@@ -309,7 +307,7 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
       store_rd (cpu, rd, EXTEND32 (
-	ashiftrt ((signed32) cpu->regs[rs1], cpu->regs[rs2] & 0x1f)));
+	ashiftrt ((int32_t) cpu->regs[rs1], cpu->regs[rs2] & 0x1f)));
       break;
     case MATCH_SRAI:
       TRACE_INSN (cpu, "srai %s, %s, %" PRIiTW ";  // %s = %s >>> %#" PRIxTW,
@@ -329,7 +327,7 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
 		  rd_name, rs1_name, shamt_imm, rd_name, rs1_name, shamt_imm);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
       store_rd (cpu, rd, EXTEND32 (
-	ashiftrt ((signed32) cpu->regs[rs1], shamt_imm)));
+	ashiftrt ((int32_t) cpu->regs[rs1], shamt_imm)));
       break;
     case MATCH_SLT:
       TRACE_INSN (cpu, "slt");
@@ -585,9 +583,9 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
     case MATCH_FENCE_I:
       TRACE_INSN (cpu, "fence.i;");
       break;
-    case MATCH_SBREAK:
-      TRACE_INSN (cpu, "sbreak;");
-      /* GDB expects us to step over SBREAK.  */
+    case MATCH_EBREAK:
+      TRACE_INSN (cpu, "ebreak;");
+      /* GDB expects us to step over EBREAK.  */
       sim_engine_halt (sd, cpu, NULL, cpu->pc + 4, sim_stopped, SIM_SIGTRAP);
       break;
     case MATCH_ECALL:
@@ -602,8 +600,8 @@ execute_i (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
   return pc;
 }
 
-static unsigned64
-mulhu (unsigned64 a, unsigned64 b)
+static uint64_t
+mulhu (uint64_t a, uint64_t b)
 {
 #ifdef HAVE___INT128
   return ((__int128)a * b) >> 64;
@@ -628,16 +626,16 @@ mulhu (unsigned64 a, unsigned64 b)
 #endif
 }
 
-static unsigned64
-mulh (signed64 a, signed64 b)
+static uint64_t
+mulh (int64_t a, int64_t b)
 {
   int negate = (a < 0) != (b < 0);
   uint64_t res = mulhu (a < 0 ? -a : a, b < 0 ? -b : b);
   return negate ? ~res + (a * b == 0) : res;
 }
 
-static unsigned64
-mulhsu (signed64 a, unsigned64 b)
+static uint64_t
+mulhsu (int64_t a, uint64_t b)
 {
   int negate = a < 0;
   uint64_t res = mulhu (a < 0 ? -a : a, b);
@@ -697,8 +695,8 @@ execute_m (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
       TRACE_INSN (cpu, "divuw %s, %s, %s;  // %s = %s / %s",
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
-      if ((unsigned32) cpu->regs[rs2])
-	tmp = (unsigned32) cpu->regs[rs1] / (unsigned32) cpu->regs[rs2];
+      if ((uint32_t) cpu->regs[rs2])
+	tmp = (uint32_t) cpu->regs[rs1] / (uint32_t) cpu->regs[rs2];
       else
 	tmp = -1;
       store_rd (cpu, rd, EXTEND32 (tmp));
@@ -712,15 +710,15 @@ execute_m (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
       TRACE_INSN (cpu, "mulw %s, %s, %s;  // %s = %s * %s",
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
-      store_rd (cpu, rd, EXTEND32 ((signed32) cpu->regs[rs1]
-				   * (signed32) cpu->regs[rs2]));
+      store_rd (cpu, rd, EXTEND32 ((int32_t) cpu->regs[rs1]
+				   * (int32_t) cpu->regs[rs2]));
       break;
     case MATCH_MULH:
       TRACE_INSN (cpu, "mulh %s, %s, %s;  // %s = %s * %s",
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       if (RISCV_XLEN (cpu) == 32)
-	store_rd (cpu, rd, ((signed64)(signed_word) cpu->regs[rs1]
-			    * (signed64)(signed_word) cpu->regs[rs2]) >> 32);
+	store_rd (cpu, rd, ((int64_t)(signed_word) cpu->regs[rs1]
+			    * (int64_t)(signed_word) cpu->regs[rs2]) >> 32);
       else
 	store_rd (cpu, rd, mulh (cpu->regs[rs1], cpu->regs[rs2]));
       break;
@@ -728,8 +726,8 @@ execute_m (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
       TRACE_INSN (cpu, "mulhu %s, %s, %s;  // %s = %s * %s",
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       if (RISCV_XLEN (cpu) == 32)
-	store_rd (cpu, rd, ((unsigned64)cpu->regs[rs1]
-			    * (unsigned64)cpu->regs[rs2]) >> 32);
+	store_rd (cpu, rd, ((uint64_t)cpu->regs[rs1]
+			    * (uint64_t)cpu->regs[rs2]) >> 32);
       else
 	store_rd (cpu, rd, mulhu (cpu->regs[rs1], cpu->regs[rs2]));
       break;
@@ -737,8 +735,8 @@ execute_m (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
       TRACE_INSN (cpu, "mulhsu %s, %s, %s;  // %s = %s * %s",
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       if (RISCV_XLEN (cpu) == 32)
-	store_rd (cpu, rd, ((signed64)(signed_word) cpu->regs[rs1]
-			    * (unsigned64)cpu->regs[rs2]) >> 32);
+	store_rd (cpu, rd, ((int64_t)(signed_word) cpu->regs[rs1]
+			    * (uint64_t)cpu->regs[rs2]) >> 32);
       else
 	store_rd (cpu, rd, mulhsu (cpu->regs[rs1], cpu->regs[rs2]));
       break;
@@ -777,8 +775,8 @@ execute_m (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
       TRACE_INSN (cpu, "remuw %s, %s, %s;  // %s = %s %% %s",
 		  rd_name, rs1_name, rs2_name, rd_name, rs1_name, rs2_name);
       RISCV_ASSERT_RV64 (cpu, "insn: %s", op->name);
-      if ((unsigned32) cpu->regs[rs2])
-	tmp = (unsigned32) cpu->regs[rs1] % (unsigned32) cpu->regs[rs2];
+      if ((uint32_t) cpu->regs[rs2])
+	tmp = (uint32_t) cpu->regs[rs1] % (uint32_t) cpu->regs[rs2];
       else
 	tmp = cpu->regs[rs1];
       store_rd (cpu, rd, EXTEND32 (tmp));
@@ -938,6 +936,7 @@ execute_one (SIM_CPU *cpu, unsigned_word iw, const struct riscv_opcode *op)
     case INSN_CLASS_I:
       return execute_i (cpu, iw, op);
     case INSN_CLASS_M:
+    case INSN_CLASS_ZMMUL:
       return execute_m (cpu, iw, op);
     default:
       TRACE_INSN (cpu, "UNHANDLED EXTENSION: %d", op->insn_class);
@@ -1022,7 +1021,7 @@ pc_set (sim_cpu *cpu, sim_cia pc)
 }
 
 static int
-reg_fetch (sim_cpu *cpu, int rn, unsigned char *buf, int len)
+reg_fetch (sim_cpu *cpu, int rn, void *buf, int len)
 {
   if (len <= 0 || len > sizeof (unsigned_word))
     return -1;
@@ -1055,7 +1054,7 @@ reg_fetch (sim_cpu *cpu, int rn, unsigned char *buf, int len)
 }
 
 static int
-reg_store (sim_cpu *cpu, int rn, unsigned char *buf, int len)
+reg_store (sim_cpu *cpu, int rn, const void *buf, int len)
 {
   if (len <= 0 || len > sizeof (unsigned_word))
     return -1;
@@ -1115,7 +1114,7 @@ initialize_cpu (SIM_DESC sd, SIM_CPU *cpu, int mhartid)
   cpu->csr.misa = 0;
   /* RV32 sets this field to 0, and we don't really support RV128 yet.  */
   if (RISCV_XLEN (cpu) == 64)
-    cpu->csr.misa |= (unsigned64)2 << 62;
+    cpu->csr.misa |= (uint64_t)2 << 62;
 
   /* Skip the leading "rv" prefix and the two numbers.  */
   extensions = MODEL_NAME (CPU_MODEL (cpu)) + 4;
@@ -1193,15 +1192,15 @@ initialize_env (SIM_DESC sd, const char * const *argv, const char * const *env)
   cpu->sp = sp;
 
   /* First push the argc value.  */
-  sim_write (sd, sp, (void *)&argc, sizeof (unsigned_word));
+  sim_write (sd, sp, &argc, sizeof (unsigned_word));
   sp += sizeof (unsigned_word);
 
   /* Then the actual argv strings so we know where to point argv[].  */
   for (i = 0; i < argc; ++i)
     {
       unsigned len = strlen (argv[i]) + 1;
-      sim_write (sd, sp_flat, (void *)argv[i], len);
-      sim_write (sd, sp, (void *)&sp_flat, sizeof (address_word));
+      sim_write (sd, sp_flat, argv[i], len);
+      sim_write (sd, sp, &sp_flat, sizeof (address_word));
       sp_flat += len;
       sp += sizeof (address_word);
     }
@@ -1212,8 +1211,8 @@ initialize_env (SIM_DESC sd, const char * const *argv, const char * const *env)
   for (i = 0; i < envc; ++i)
     {
       unsigned len = strlen (env[i]) + 1;
-      sim_write (sd, sp_flat, (void *)env[i], len);
-      sim_write (sd, sp, (void *)&sp_flat, sizeof (address_word));
+      sim_write (sd, sp_flat, env[i], len);
+      sim_write (sd, sp, &sp_flat, sizeof (address_word));
       sp_flat += len;
       sp += sizeof (address_word);
     }

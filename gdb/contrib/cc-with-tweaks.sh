@@ -2,7 +2,7 @@
 # Wrapper around gcc to tweak the output in various ways when running
 # the testsuite.
 
-# Copyright (C) 2010-2022 Free Software Foundation, Inc.
+# Copyright (C) 2010-2023 Free Software Foundation, Inc.
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation; either version 3 of the License, or
@@ -73,6 +73,11 @@ READELF=${READELF:-readelf}
 
 DWZ=${DWZ:-dwz}
 DWP=${DWP:-dwp}
+
+# shellcheck disable=SC2206 # Allow word splitting.
+STRIP_ARGS_STRIP_DEBUG=(${STRIP_ARGS_STRIP_DEBUG:---strip-debug})
+# shellcheck disable=SC2206 # Allow word splitting.
+STRIP_ARGS_KEEP_DEBUG=(${STRIP_ARGS_KEEP_DEBUG:---only-keep-debug})
 
 have_link=unknown
 next_is_output_file=no
@@ -179,6 +184,19 @@ fi
 if [ "$want_index" = true ]; then
     get_tmpdir
     mv "$output_file" "$tmpdir"
+    output_dir=$(dirname "$output_file")
+
+    # Copy .dwo file alongside, to fix gdb.dwarf2/fission-relative-dwo.exp.
+    # Use copy instead of move to not break
+    # rtf=gdb.dwarf2/fission-absolute-dwo.exp.
+    dwo_pattern="$output_dir/*.dwo"
+    for f in $dwo_pattern; do
+	if [ "$f" = "$dwo_pattern" ]; then
+	    break
+	fi
+	cp "$f" "$tmpdir"
+    done
+
     tmpfile="$tmpdir/$(basename $output_file)"
     # Filter out these messages which would stop dejagnu testcase run:
     # echo "$myname: No index was created for $file" 1>&2
@@ -187,6 +205,7 @@ if [ "$want_index" = true ]; then
 	| grep -v "^${GDB_ADD_INDEX##*/}: " >&2
     rc=${PIPESTATUS[0]}
     mv "$tmpfile" "$output_file"
+    rm -f "$tmpdir"/*.dwo
     [ $rc != 0 ] && exit $rc
 fi
 
@@ -253,11 +272,11 @@ if [ "$want_gnu_debuglink" = true ]; then
     debug_file="$tmpdir"/$(basename "$output_file").debug
 
     # Create stripped and debug versions of output_file.
-    strip --strip-debug "${output_file}" \
+    strip "${STRIP_ARGS_STRIP_DEBUG[@]}" "${output_file}" \
 	  -o "${stripped_file}"
     rc=$?
     [ $rc != 0 ] && exit $rc
-    strip --only-keep-debug "${output_file}" \
+    strip "${STRIP_ARGS_KEEP_DEBUG[@]}" "${output_file}" \
 	  -o "${debug_file}"
     rc=$?
     [ $rc != 0 ] && exit $rc
@@ -271,7 +290,7 @@ if [ "$want_gnu_debuglink" = true ]; then
 
 	# Overwrite output_file with stripped version containing
 	# .gnu_debuglink to debug_file.
-	objcopy --add-gnu-debuglink="$link" "${stripped_file}" \
+	$OBJCOPY --add-gnu-debuglink="$link" "${stripped_file}" \
 		"${output_file}"
 	rc=$?
 	[ $rc != 0 ] && exit $rc

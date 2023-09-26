@@ -1,6 +1,6 @@
 /* Native support code for PPC AIX, for GDB the GNU debugger.
 
-   Copyright (C) 2006-2022 Free Software Foundation, Inc.
+   Copyright (C) 2006-2023 Free Software Foundation, Inc.
 
    Free Software Foundation, Inc.
 
@@ -30,7 +30,6 @@
 #include "infcall.h"
 #include "objfiles.h"
 #include "breakpoint.h"
-#include "rs6000-tdep.h"
 #include "ppc-tdep.h"
 #include "rs6000-aix-tdep.h"
 #include "xcoffread.h"
@@ -66,14 +65,17 @@
 /* STKMIN64+grp1 offset. 112+56=168 */
 #define SIG_FRAME_FP_OFFSET64 168
 
+/* Minimum possible text address in AIX.  */
+#define AIX_TEXT_SEGMENT_BASE 0x10000000
+
 static struct trad_frame_cache *
-aix_sighandle_frame_cache (struct frame_info *this_frame,
+aix_sighandle_frame_cache (frame_info_ptr this_frame,
 			   void **this_cache)
 {
   LONGEST backchain;
   CORE_ADDR base, base_orig, func;
   struct gdbarch *gdbarch = get_frame_arch (this_frame);
-  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  ppc_gdbarch_tdep *tdep = gdbarch_tdep<ppc_gdbarch_tdep> (gdbarch);
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   struct trad_frame_cache *this_trad_cache;
 
@@ -123,7 +125,7 @@ aix_sighandle_frame_cache (struct frame_info *this_frame,
 }
 
 static void
-aix_sighandle_frame_this_id (struct frame_info *this_frame,
+aix_sighandle_frame_this_id (frame_info_ptr this_frame,
 			     void **this_prologue_cache,
 			     struct frame_id *this_id)
 {
@@ -133,7 +135,7 @@ aix_sighandle_frame_this_id (struct frame_info *this_frame,
 }
 
 static struct value *
-aix_sighandle_frame_prev_register (struct frame_info *this_frame,
+aix_sighandle_frame_prev_register (frame_info_ptr this_frame,
 				   void **this_prologue_cache, int regnum)
 {
   struct trad_frame_cache *this_trad_cache
@@ -143,7 +145,7 @@ aix_sighandle_frame_prev_register (struct frame_info *this_frame,
 
 static int
 aix_sighandle_frame_sniffer (const struct frame_unwind *self,
-			     struct frame_info *this_frame,
+			     frame_info_ptr this_frame,
 			     void **this_prologue_cache)
 {
   CORE_ADDR pc = get_frame_pc (this_frame);
@@ -259,7 +261,8 @@ rs6000_aix_iterate_over_regset_sections (struct gdbarch *gdbarch,
 					 void *cb_data,
 					 const struct regcache *regcache)
 {
-  if (gdbarch_tdep (gdbarch)->wordsize == 4)
+  ppc_gdbarch_tdep *tdep = gdbarch_tdep<ppc_gdbarch_tdep> (gdbarch);
+  if (tdep->wordsize == 4)
     cb (".reg", 592, 592, &rs6000_aix32_regset, NULL, cb_data);
   else
     cb (".reg", 576, 576, &rs6000_aix64_regset, NULL, cb_data);
@@ -289,7 +292,7 @@ rs6000_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 			function_call_return_method return_method,
 			CORE_ADDR struct_addr)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  ppc_gdbarch_tdep *tdep = gdbarch_tdep<ppc_gdbarch_tdep> (gdbarch);
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   int ii;
   int len = 0;
@@ -297,7 +300,7 @@ rs6000_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
   int argbytes;			/* current argument byte */
   gdb_byte tmp_buffer[50];
   int f_argno = 0;		/* current floating point argno */
-  int wordsize = gdbarch_tdep (gdbarch)->wordsize;
+  int wordsize = tdep->wordsize;
   CORE_ADDR func_addr = find_function_addr (function, NULL);
 
   struct value *arg = 0;
@@ -348,7 +351,7 @@ rs6000_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 
       arg = args[argno];
       type = check_typedef (value_type (arg));
-      len = TYPE_LENGTH (type);
+      len = type->length ();
 
       if (type->code () == TYPE_CODE_FLT)
 	{
@@ -364,7 +367,8 @@ rs6000_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 
 	  gdb_assert (len <= 8);
 
-	  target_float_convert (value_contents (arg), type, reg_val, reg_type);
+	  target_float_convert (value_contents (arg).data (), type, reg_val,
+				reg_type);
 	  regcache->cooked_write (fp_regnum, reg_val);
 	  ++f_argno;
 	}
@@ -378,7 +382,7 @@ rs6000_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 	      gdb_byte word[PPC_MAX_REGISTER_SIZE];
 	      memset (word, 0, reg_size);
 	      memcpy (word,
-		      ((char *) value_contents (arg)) + argbytes,
+		      ((char *) value_contents (arg).data ()) + argbytes,
 		      (len - argbytes) > reg_size
 			? reg_size : len - argbytes);
 	      regcache->cooked_write (tdep->ppc_gp0_regnum + 3 + ii, word);
@@ -396,7 +400,15 @@ rs6000_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 	  gdb_byte word[PPC_MAX_REGISTER_SIZE];
 
 	  memset (word, 0, reg_size);
-	  memcpy (word, value_contents (arg), len);
+	  if (type->code () == TYPE_CODE_INT
+	     || type->code () == TYPE_CODE_ENUM
+	     || type->code () == TYPE_CODE_BOOL
+	     || type->code () == TYPE_CODE_CHAR)
+	    /* Sign or zero extend the "int" into a "word".  */
+	    store_unsigned_integer (word, reg_size, byte_order,
+				    unpack_long (type, value_contents (arg).data ()));
+	  else
+	    memcpy (word, value_contents (arg).data (), len);
 	  regcache->cooked_write (tdep->ppc_gp0_regnum + 3 +ii, word);
 	}
       ++argno;
@@ -435,7 +447,7 @@ ran_out_of_registers_for_arguments:
       for (; jj < nargs; ++jj)
 	{
 	  struct value *val = args[jj];
-	  space += ((TYPE_LENGTH (value_type (val))) + 3) & -4;
+	  space += ((value_type (val)->length ()) + 3) & -4;
 	}
 
       /* Add location required for the rest of the parameters.  */
@@ -457,7 +469,7 @@ ran_out_of_registers_for_arguments:
       if (argbytes)
 	{
 	  write_memory (sp + 24 + (ii * 4),
-			value_contents (arg) + argbytes,
+			value_contents (arg).data () + argbytes,
 			len - argbytes);
 	  ++argno;
 	  ii += ((len - argbytes + 3) & -4) / 4;
@@ -469,7 +481,7 @@ ran_out_of_registers_for_arguments:
 
 	  arg = args[argno];
 	  type = check_typedef (value_type (arg));
-	  len = TYPE_LENGTH (type);
+	  len = type->length ();
 
 
 	  /* Float types should be passed in fpr's, as well as in the
@@ -480,11 +492,11 @@ ran_out_of_registers_for_arguments:
 	      gdb_assert (len <= 8);
 
 	      regcache->cooked_write (tdep->ppc_fp0_regnum + 1 + f_argno,
-				      value_contents (arg));
+				      value_contents (arg).data ());
 	      ++f_argno;
 	    }
 
-	  write_memory (sp + 24 + (ii * 4), value_contents (arg), len);
+	  write_memory (sp + 24 + (ii * 4), value_contents (arg).data (), len);
 	  ii += ((len + 3) & -4) / 4;
 	}
     }
@@ -518,7 +530,7 @@ rs6000_return_value (struct gdbarch *gdbarch, struct value *function,
 		     struct type *valtype, struct regcache *regcache,
 		     gdb_byte *readbuf, const gdb_byte *writebuf)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  ppc_gdbarch_tdep *tdep = gdbarch_tdep<ppc_gdbarch_tdep> (gdbarch);
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
 
   /* The calling convention this function implements assumes the
@@ -529,7 +541,7 @@ rs6000_return_value (struct gdbarch *gdbarch, struct value *function,
   /* AltiVec extension: Functions that declare a vector data type as a
      return value place that return value in VR2.  */
   if (valtype->code () == TYPE_CODE_ARRAY && valtype->is_vector ()
-      && TYPE_LENGTH (valtype) == 16)
+      && valtype->length () == 16)
     {
       if (readbuf)
 	regcache->cooked_read (tdep->ppc_vr0_regnum + 2, readbuf);
@@ -554,7 +566,7 @@ rs6000_return_value (struct gdbarch *gdbarch, struct value *function,
      complex*8 and complex*16 are returned in FPR1:FPR2, and
      complex*32 is returned in FPR1:FPR4.  */
   if (valtype->code () == TYPE_CODE_FLT
-      && (TYPE_LENGTH (valtype) == 4 || TYPE_LENGTH (valtype) == 8))
+      && (valtype->length () == 4 || valtype->length () == 8))
     {
       struct type *regtype = register_type (gdbarch, tdep->ppc_fp0_regnum);
       gdb_byte regval[8];
@@ -581,7 +593,7 @@ rs6000_return_value (struct gdbarch *gdbarch, struct value *function,
      lengths less than or equal to 32 bits, must be returned right
      justified in GPR3 with signed values sign extended and unsigned
      values zero extended, as necessary.  */
-  if (TYPE_LENGTH (valtype) <= tdep->wordsize)
+  if (valtype->length () <= tdep->wordsize)
     {
       if (readbuf)
 	{
@@ -590,7 +602,7 @@ rs6000_return_value (struct gdbarch *gdbarch, struct value *function,
 	  /* For reading we don't have to worry about sign extension.  */
 	  regcache_cooked_read_unsigned (regcache, tdep->ppc_gp0_regnum + 3,
 					 &regval);
-	  store_unsigned_integer (readbuf, TYPE_LENGTH (valtype), byte_order,
+	  store_unsigned_integer (readbuf, valtype->length (), byte_order,
 				  regval);
 	}
       if (writebuf)
@@ -607,7 +619,7 @@ rs6000_return_value (struct gdbarch *gdbarch, struct value *function,
   /* Eight-byte non-floating-point scalar values must be returned in
      GPR3:GPR4.  */
 
-  if (TYPE_LENGTH (valtype) == 8)
+  if (valtype->length () == 8)
     {
       gdb_assert (valtype->code () != TYPE_CODE_FLT);
       gdb_assert (tdep->wordsize == 4);
@@ -656,7 +668,7 @@ rs6000_convert_from_func_ptr_addr (struct gdbarch *gdbarch,
 				   CORE_ADDR addr,
 				   struct target_ops *targ)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  ppc_gdbarch_tdep *tdep = gdbarch_tdep<ppc_gdbarch_tdep> (gdbarch);
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   struct obj_section *s;
 
@@ -700,7 +712,7 @@ branch_dest (struct regcache *regcache, int opcode, int instr,
 	     CORE_ADDR pc, CORE_ADDR safety)
 {
   struct gdbarch *gdbarch = regcache->arch ();
-  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  ppc_gdbarch_tdep *tdep = gdbarch_tdep<ppc_gdbarch_tdep> (gdbarch);
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR dest;
   int immediate;
@@ -740,7 +752,7 @@ branch_dest (struct regcache *regcache, int opcode, int instr,
 	     execution will return to the saved PC in the frame.  */
 	  if (dest < AIX_TEXT_SEGMENT_BASE)
 	    {
-	      struct frame_info *frame = get_current_frame ();
+	      frame_info_ptr frame = get_current_frame ();
 
 	      dest = read_memory_unsigned_integer
 		(get_frame_base (frame) + SIG_FRAME_PC_OFFSET,
@@ -845,7 +857,7 @@ rs6000_aix_osabi_sniffer (bfd *abfd)
 /* A structure encoding the offset and size of a field within
    a struct.  */
 
-struct field_info
+struct ldinfo_field
 {
   int offset;
   int size;
@@ -857,13 +869,13 @@ struct field_info
 
 struct ld_info_desc
 {
-  struct field_info ldinfo_next;
-  struct field_info ldinfo_fd;
-  struct field_info ldinfo_textorg;
-  struct field_info ldinfo_textsize;
-  struct field_info ldinfo_dataorg;
-  struct field_info ldinfo_datasize;
-  struct field_info ldinfo_filename;
+  struct ldinfo_field ldinfo_next;
+  struct ldinfo_field ldinfo_fd;
+  struct ldinfo_field ldinfo_textorg;
+  struct ldinfo_field ldinfo_textsize;
+  struct ldinfo_field ldinfo_dataorg;
+  struct ldinfo_field ldinfo_datasize;
+  struct ldinfo_field ldinfo_filename;
 };
 
 /* The following data has been generated by compiling and running
@@ -968,7 +980,7 @@ static struct ld_info
 rs6000_aix_extract_ld_info (struct gdbarch *gdbarch,
 			    const gdb_byte *ldi_buf)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  ppc_gdbarch_tdep *tdep = gdbarch_tdep<ppc_gdbarch_tdep> (gdbarch);
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   struct type *ptr_type = builtin_type (gdbarch)->builtin_data_ptr;
   const struct ld_info_desc desc
@@ -1127,7 +1139,7 @@ rs6000_aix_core_xfer_shared_libraries_aix (struct gdbarch *gdbarch,
 static void
 rs6000_aix_init_osabi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
-  struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
+  ppc_gdbarch_tdep *tdep = gdbarch_tdep<ppc_gdbarch_tdep> (gdbarch);
 
   /* RS6000/AIX does not support PT_STEP.  Has to be simulated.  */
   set_gdbarch_software_single_step (gdbarch, rs6000_software_single_step);
@@ -1176,7 +1188,7 @@ rs6000_aix_init_osabi (struct gdbarch_info info, struct gdbarch *gdbarch)
   set_gdbarch_wchar_signed (gdbarch, 0);
   set_gdbarch_auto_wide_charset (gdbarch, rs6000_aix_auto_wide_charset);
 
-  set_solib_ops (gdbarch, &solib_aix_so_ops);
+  set_gdbarch_so_ops (gdbarch, &solib_aix_so_ops);
   frame_unwind_append_unwinder (gdbarch, &aix_sighandle_frame_unwind);
 }
 

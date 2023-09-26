@@ -99,7 +99,7 @@ find_arg(const char *err_msg,
 {
   *ptr_to_argp += 1;
   if (argv[*ptr_to_argp] == NULL)
-    error(err_msg);
+    error("%s", err_msg);
   return argv[*ptr_to_argp];
 }
 
@@ -359,6 +359,11 @@ psim_options(device *root,
 	  {
 	    extern const char version[];
 	    printf ("GNU simulator %s%s\n", PKGVERSION, version);
+	    printf ("Copyright (C) 2022 Free Software Foundation, Inc.\n");
+	    printf ( "\
+License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\
+\nThis is free software: you are free to change and redistribute it.\n\
+There is NO WARRANTY, to the extent permitted by law.\n");
 	    if (kind == SIM_OPEN_STANDALONE)
 	      exit (0);
 	    else
@@ -535,7 +540,7 @@ psim_create(const char *file_name,
   if (ppc_trace[trace_print_device_tree] || ppc_trace[trace_dump_device_tree])
     tree_print(root);
   if (ppc_trace[trace_dump_device_tree])
-    error("");
+    error("%s", "");
 
   return system;
 }
@@ -873,7 +878,7 @@ psim_read_register(psim *system,
     break;
 
   case reg_evr:
-    *(unsigned64*)cooked_buf = EVR(description.index);
+    *(uint64_t*)cooked_buf = EVR(description.index);
     break;
 
   case reg_acc:
@@ -882,9 +887,8 @@ psim_read_register(psim *system,
 #endif
 
   default:
-    printf_filtered("psim_read_register(processor=0x%lx,buf=0x%lx,reg=%s) %s\n",
-		    (unsigned long)processor, (unsigned long)buf, reg,
-		    "read of this register unimplemented");
+    printf_filtered("psim_read_register(processor=%p,buf=%p,reg=%s) %s\n",
+		    processor, buf, reg, "read of this register unimplemented");
     break;
 
   }
@@ -1047,8 +1051,8 @@ psim_write_register(psim *system,
 
   case reg_evr:
     {
-      unsigned64 v;
-      v = *(unsigned64*)cooked_buf;
+      uint64_t v;
+      v = *(uint64_t*)cooked_buf;
       cpu_registers(processor)->e500.gprh[description.index] = v >> 32;
       cpu_registers(processor)->gpr[description.index] = v;
       break;
@@ -1070,8 +1074,8 @@ psim_write_register(psim *system,
 #endif
 
   default:
-    printf_filtered("psim_write_register(processor=0x%lx,cooked_buf=0x%lx,reg=%s) %s\n",
-		    (unsigned long)processor, (unsigned long)cooked_buf, reg,
+    printf_filtered("psim_write_register(processor=%p,cooked_buf=%p,reg=%s) %s\n",
+		    processor, cooked_buf, reg,
 		    "read of this register unimplemented");
     break;
 
@@ -1187,7 +1191,7 @@ psim_merge_device_file(device *root,
       /* append the next line */
       if (!fgets(device_path + curlen, sizeof(device_path) - curlen, description)) {
 	fclose(description);
-	error("%s:%s: unexpected eof in line continuation - %s",
+	error("%s:%d: unexpected eof in line continuation - %s",
 	      file_name, line_nr, device_path);
       }
       if (strchr(device_path, '\n') == NULL) {

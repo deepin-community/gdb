@@ -1,5 +1,5 @@
 /* riscv.h.  RISC-V opcode list for GDB, the GNU debugger.
-   Copyright (C) 2011-2021 Free Software Foundation, Inc.
+   Copyright (C) 2011-2022 Free Software Foundation, Inc.
    Contributed by Andrew Waterman
 
    This file is part of GDB, GAS, and the GNU binutils.
@@ -37,20 +37,14 @@ static inline unsigned int riscv_insn_length (insn_t insn)
     return 6;
   if ((insn & 0x7f) == 0x3f) /* 64-bit instructions.  */
     return 8;
+  /* 80- ... 176-bit instructions.  */
+  if ((insn & 0x7f) == 0x7f && (insn & 0x7000) != 0x7000)
+    return 10 + ((insn >> 11) & 0xe);
+  /* Maximum value returned by this function.  */
+#define RISCV_MAX_INSN_LEN 22
   /* Longer instructions not supported at the moment.  */
   return 2;
 }
-
-static const char * const riscv_rm[8] =
-{
-  "rne", "rtz", "rdn", "rup", "rmm", 0, 0, "dyn"
-};
-
-static const char * const riscv_pred_succ[16] =
-{
-  0,   "w",  "r",  "rw",  "o",  "ow",  "or",  "orw",
-  "i", "iw", "ir", "irw", "io", "iow", "ior", "iorw"
-};
 
 #define RVC_JUMP_BITS 11
 #define RVC_JUMP_REACH ((1ULL << RVC_JUMP_BITS) * RISCV_JUMP_ALIGN)
@@ -60,6 +54,7 @@ static const char * const riscv_pred_succ[16] =
 
 #define RV_X(x, s, n)  (((x) >> (s)) & ((1 << (n)) - 1))
 #define RV_IMM_SIGN(x) (-(((x) >> 31) & 1))
+#define RV_X_SIGNED(x, s, n) (RV_X(x, s, n) | ((-(RV_X(x, (s + n - 1), 1))) << (n)))
 
 #define EXTRACT_ITYPE_IMM(x) \
   (RV_X(x, 20, 12) | (RV_IMM_SIGN(x) << 12))
@@ -101,6 +96,16 @@ static const char * const riscv_pred_succ[16] =
   ((RV_X(x, 3, 2) << 1) | (RV_X(x, 10, 2) << 3) | (RV_X(x, 2, 1) << 5) | (RV_X(x, 5, 2) << 6) | (-RV_X(x, 12, 1) << 8))
 #define EXTRACT_CJTYPE_IMM(x) \
   ((RV_X(x, 3, 3) << 1) | (RV_X(x, 11, 1) << 4) | (RV_X(x, 2, 1) << 5) | (RV_X(x, 7, 1) << 6) | (RV_X(x, 6, 1) << 7) | (RV_X(x, 9, 2) << 8) | (RV_X(x, 8, 1) << 10) | (-RV_X(x, 12, 1) << 11))
+#define EXTRACT_RVV_VI_IMM(x) \
+  (RV_X(x, 15, 5) | (-RV_X(x, 19, 1) << 5))
+#define EXTRACT_RVV_VI_UIMM(x) \
+  (RV_X(x, 15, 5))
+#define EXTRACT_RVV_OFFSET(x) \
+  (RV_X(x, 29, 3))
+#define EXTRACT_RVV_VB_IMM(x) \
+  (RV_X(x, 20, 10))
+#define EXTRACT_RVV_VC_IMM(x) \
+  (RV_X(x, 20, 11))
 
 #define ENCODE_ITYPE_IMM(x) \
   (RV_X(x, 0, 12) << 20)
@@ -142,6 +147,10 @@ static const char * const riscv_pred_succ[16] =
   ((RV_X(x, 1, 2) << 3) | (RV_X(x, 3, 2) << 10) | (RV_X(x, 5, 1) << 2) | (RV_X(x, 6, 2) << 5) | (RV_X(x, 8, 1) << 12))
 #define ENCODE_CJTYPE_IMM(x) \
   ((RV_X(x, 1, 3) << 3) | (RV_X(x, 4, 1) << 11) | (RV_X(x, 5, 1) << 2) | (RV_X(x, 6, 1) << 7) | (RV_X(x, 7, 1) << 6) | (RV_X(x, 8, 2) << 9) | (RV_X(x, 10, 1) << 8) | (RV_X(x, 11, 1) << 12))
+#define ENCODE_RVV_VB_IMM(x) \
+  (RV_X(x, 0, 10) << 20)
+#define ENCODE_RVV_VC_IMM(x) \
+  (RV_X(x, 0, 11) << 20)
 
 #define VALID_ITYPE_IMM(x) (EXTRACT_ITYPE_IMM(ENCODE_ITYPE_IMM(x)) == (x))
 #define VALID_STYPE_IMM(x) (EXTRACT_STYPE_IMM(ENCODE_STYPE_IMM(x)) == (x))
@@ -165,6 +174,8 @@ static const char * const riscv_pred_succ[16] =
 #define VALID_CLTYPE_LD_IMM(x) (EXTRACT_CLTYPE_LD_IMM(ENCODE_CLTYPE_LD_IMM(x)) == (x))
 #define VALID_CBTYPE_IMM(x) (EXTRACT_CBTYPE_IMM(ENCODE_CBTYPE_IMM(x)) == (x))
 #define VALID_CJTYPE_IMM(x) (EXTRACT_CJTYPE_IMM(ENCODE_CJTYPE_IMM(x)) == (x))
+#define VALID_RVV_VB_IMM(x) (EXTRACT_RVV_VB_IMM(ENCODE_RVV_VB_IMM(x)) == (x))
+#define VALID_RVV_VC_IMM(x) (EXTRACT_RVV_VC_IMM(ENCODE_RVV_VC_IMM(x)) == (x))
 
 #define RISCV_RTYPE(insn, rd, rs1, rs2) \
   ((MATCH_ ## insn) | ((rd) << OP_SH_RD) | ((rs1) << OP_SH_RS1) | ((rs2) << OP_SH_RS2))
@@ -261,6 +272,41 @@ static const char * const riscv_pred_succ[16] =
 #define OP_MASK_CFUNCT2		0x3
 #define OP_SH_CFUNCT2		5
 
+/* Scalar crypto fields. */
+
+#define OP_SH_BS        30
+#define OP_MASK_BS      3
+#define OP_SH_RNUM      20
+#define OP_MASK_RNUM    0xf
+
+/* RVV fields.  */
+
+#define OP_MASK_VD		0x1f
+#define OP_SH_VD		7
+#define OP_MASK_VS1		0x1f
+#define OP_SH_VS1		15
+#define OP_MASK_VS2		0x1f
+#define OP_SH_VS2		20
+#define OP_MASK_VIMM		0x1f
+#define OP_SH_VIMM		15
+#define OP_MASK_VMASK		0x1
+#define OP_SH_VMASK		25
+#define OP_MASK_VFUNCT6		0x3f
+#define OP_SH_VFUNCT6		26
+#define OP_MASK_VLMUL		0x7
+#define OP_SH_VLMUL		0
+#define OP_MASK_VSEW		0x7
+#define OP_SH_VSEW		3
+#define OP_MASK_VTA		0x1
+#define OP_SH_VTA		6
+#define OP_MASK_VMA		0x1
+#define OP_SH_VMA		7
+#define OP_MASK_VWD		0x1
+#define OP_SH_VWD		26
+
+#define NVECR 32
+#define NVECM 1
+
 /* ABI names for selected x-registers.  */
 
 #define X_RA 1
@@ -296,6 +342,22 @@ static const char * const riscv_pred_succ[16] =
 #define EXTRACT_OPERAND(FIELD, INSN) \
   EXTRACT_BITS ((INSN), OP_MASK_##FIELD, OP_SH_##FIELD)
 
+/* Extract an unsigned immediate operand on position s with n bits.  */
+#define EXTRACT_U_IMM(n, s, l) \
+  RV_X (l, s, n)
+
+/* Extract an signed immediate operand on position s with n bits.  */
+#define EXTRACT_S_IMM(n, s, l) \
+  RV_X_SIGNED (l, s, n)
+
+/* Validate that unsigned n-bit immediate is within bounds.  */
+#define VALIDATE_U_IMM(v, n) \
+  ((unsigned long) v < (1UL << n))
+
+/* Validate that signed n-bit immediate is within bounds.  */
+#define VALIDATE_S_IMM(v, n) \
+  (v < (long) (1UL << (n-1)) && v >= -(offsetT) (1UL << (n-1)))
+
 /* The maximal number of subset can be required.  */
 #define MAX_SUBSET_NUM 4
 
@@ -316,9 +378,50 @@ enum riscv_insn_class
   INSN_CLASS_ZICSR,
   INSN_CLASS_ZIFENCEI,
   INSN_CLASS_ZIHINTPAUSE,
+  INSN_CLASS_ZMMUL,
+  INSN_CLASS_ZAWRS,
+  INSN_CLASS_F_INX,
+  INSN_CLASS_D_INX,
+  INSN_CLASS_Q_INX,
+  INSN_CLASS_ZFH_INX,
+  INSN_CLASS_ZFHMIN,
+  INSN_CLASS_ZFHMIN_INX,
+  INSN_CLASS_ZFHMIN_AND_D_INX,
+  INSN_CLASS_ZFHMIN_AND_Q_INX,
   INSN_CLASS_ZBA,
   INSN_CLASS_ZBB,
   INSN_CLASS_ZBC,
+  INSN_CLASS_ZBS,
+  INSN_CLASS_ZBKB,
+  INSN_CLASS_ZBKC,
+  INSN_CLASS_ZBKX,
+  INSN_CLASS_ZKND,
+  INSN_CLASS_ZKNE,
+  INSN_CLASS_ZKNH,
+  INSN_CLASS_ZKSED,
+  INSN_CLASS_ZKSH,
+  INSN_CLASS_ZBB_OR_ZBKB,
+  INSN_CLASS_ZBC_OR_ZBKC,
+  INSN_CLASS_ZKND_OR_ZKNE,
+  INSN_CLASS_V,
+  INSN_CLASS_ZVEF,
+  INSN_CLASS_SVINVAL,
+  INSN_CLASS_ZICBOM,
+  INSN_CLASS_ZICBOP,
+  INSN_CLASS_ZICBOZ,
+  INSN_CLASS_H,
+  INSN_CLASS_XTHEADBA,
+  INSN_CLASS_XTHEADBB,
+  INSN_CLASS_XTHEADBS,
+  INSN_CLASS_XTHEADCMO,
+  INSN_CLASS_XTHEADCONDMOV,
+  INSN_CLASS_XTHEADFMEMIDX,
+  INSN_CLASS_XTHEADFMV,
+  INSN_CLASS_XTHEADINT,
+  INSN_CLASS_XTHEADMAC,
+  INSN_CLASS_XTHEADMEMIDX,
+  INSN_CLASS_XTHEADMEMPAIR,
+  INSN_CLASS_XTHEADSYNC,
 };
 
 /* This structure holds information for a particular instruction.  */
@@ -377,6 +480,8 @@ struct riscv_opcode
 #define INSN_JSR		0x00000006
 /* Instruction is a data reference.  */
 #define INSN_DREF		0x00000008
+/* Instruction is allowed when eew >= 64.  */
+#define INSN_V_EEW64		0x10000000
 
 /* We have 5 data reference sizes, which we can encode in 3 bits.  */
 #define INSN_DATA_SIZE		0x00000070
@@ -422,14 +527,33 @@ enum
   M_ZEXTW,
   M_SEXTB,
   M_SEXTH,
+  M_VMSGE,
+  M_VMSGEU,
+  M_FLH,
+  M_FSH,
   M_NUM_MACROS
 };
 
+/* The mapping symbol states.  */
+enum riscv_seg_mstate
+{
+  MAP_NONE = 0,		/* Must be zero, for seginfo in new sections.  */
+  MAP_DATA,		/* Data.  */
+  MAP_INSN,		/* Instructions.  */
+};
 
 extern const char * const riscv_gpr_names_numeric[NGPR];
 extern const char * const riscv_gpr_names_abi[NGPR];
 extern const char * const riscv_fpr_names_numeric[NFPR];
 extern const char * const riscv_fpr_names_abi[NFPR];
+extern const char * const riscv_rm[8];
+extern const char * const riscv_pred_succ[16];
+extern const char * const riscv_vecr_names_numeric[NVECR];
+extern const char * const riscv_vecm_names_numeric[NVECM];
+extern const char * const riscv_vsew[8];
+extern const char * const riscv_vlmul[8];
+extern const char * const riscv_vta[2];
+extern const char * const riscv_vma[2];
 
 extern const struct riscv_opcode riscv_opcodes[];
 extern const struct riscv_opcode riscv_insn_types[];

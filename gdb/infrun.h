@@ -1,4 +1,4 @@
-/* Copyright (C) 1986-2022 Free Software Foundation, Inc.
+/* Copyright (C) 1986-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -18,11 +18,13 @@
 #ifndef INFRUN_H
 #define INFRUN_H 1
 
+#include "gdbthread.h"
 #include "symtab.h"
 #include "gdbsupport/byte-vector.h"
+#include "gdbsupport/intrusive_list.h"
 
 struct target_waitstatus;
-struct frame_info;
+class frame_info_ptr;
 struct address_space;
 struct return_value_info;
 struct process_stratum_target;
@@ -38,13 +40,41 @@ extern bool debug_infrun;
 
 /* Print "infrun" start/end debug statements.  */
 
-#define INFRUN_SCOPED_DEBUG_START_END(msg) \
-  scoped_debug_start_end (debug_infrun, "infrun", msg)
+#define INFRUN_SCOPED_DEBUG_START_END(fmt, ...) \
+  scoped_debug_start_end (debug_infrun, "infrun", fmt, ##__VA_ARGS__)
 
 /* Print "infrun" enter/exit debug statements.  */
 
 #define INFRUN_SCOPED_DEBUG_ENTER_EXIT \
   scoped_debug_enter_exit (debug_infrun, "infrun")
+
+/* A infrun debug helper routine to print out all the threads in the set
+   THREADS (which should be a range type that returns thread_info*
+   objects).
+
+   The TITLE is a string that is printed before the list of threads.
+
+   Output is only produced when 'set debug infrun on'.  */
+
+template<typename ThreadRange>
+static inline void
+infrun_debug_show_threads (const char *title, ThreadRange threads)
+{
+  if (debug_infrun)
+    {
+      INFRUN_SCOPED_DEBUG_ENTER_EXIT;
+
+      infrun_debug_printf ("%s:", title);
+      for (thread_info *thread : threads)
+	infrun_debug_printf ("  thread %s, executing = %d, resumed = %d, "
+			     "state = %s",
+			     thread->ptid.to_string ().c_str (),
+			     thread->executing (),
+			     thread->resumed (),
+			     thread_state_string (thread->state));
+    }
+}
+
 
 /* Nonzero if we want to give control to the user when we're notified
    of shared library events by the dynamic linker.  */
@@ -122,23 +152,28 @@ extern process_stratum_target *user_visible_resume_target (ptid_t resume_ptid);
 extern int normal_stop (void);
 
 /* Return the cached copy of the last target/ptid/waitstatus returned
-   by target_wait()/deprecated_target_wait_hook().  The data is
-   actually cached by handle_inferior_event(), which gets called
-   immediately after target_wait()/deprecated_target_wait_hook().  */
+   by target_wait().  The data is actually cached by handle_inferior_event(),
+   which gets called immediately after target_wait().  */
 extern void get_last_target_status (process_stratum_target **target,
 				    ptid_t *ptid,
 				    struct target_waitstatus *status);
 
 /* Set the cached copy of the last target/ptid/waitstatus.  */
 extern void set_last_target_status (process_stratum_target *target, ptid_t ptid,
-				    struct target_waitstatus status);
+				    const target_waitstatus &status);
 
 /* Clear the cached copy of the last ptid/waitstatus returned by
    target_wait().  */
 extern void nullify_last_target_wait_ptid ();
 
-/* Stop all threads.  Only returns after everything is halted.  */
-extern void stop_all_threads (void);
+/* Stop all threads.  Only returns after everything is halted.
+
+   REASON is a string indicating the reason why we stop all threads, used in
+   debug messages.
+
+   If INF is non-nullptr, stop all threads of that inferior.  Otherwise, stop
+   all threads of all inferiors.  */
+extern void stop_all_threads (const char *reason, inferior *inf = nullptr);
 
 extern void prepare_for_detach (void);
 
@@ -165,7 +200,7 @@ extern int stepping_past_nonsteppable_watchpoint (void);
 
 /* Record in TP the frame and location we're currently stepping through.  */
 extern void set_step_info (thread_info *tp,
-			   struct frame_info *frame,
+			   frame_info_ptr frame,
 			   struct symtab_and_line sal);
 
 /* Several print_*_reason helper functions to print why the inferior
@@ -207,7 +242,7 @@ extern void print_stop_event (struct ui_out *uiout, bool displays = true);
 /* Pretty print the results of target_wait, for debugging purposes.  */
 
 extern void print_target_wait_results (ptid_t waiton_ptid, ptid_t result_ptid,
-				       const struct target_waitstatus *ws);
+				       const struct target_waitstatus &ws);
 
 extern int signal_stop_state (int);
 
@@ -253,7 +288,7 @@ extern void mark_infrun_async_event_handler (void);
 
 /* The global chain of threads that need to do a step-over operation
    to get past e.g., a breakpoint.  */
-extern struct thread_info *global_thread_step_over_chain_head;
+extern thread_step_over_list global_thread_step_over_list;
 
 /* Remove breakpoints if possible (usually that means, if everything
    is stopped).  On failure, print a message.  */

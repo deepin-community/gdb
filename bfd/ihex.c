@@ -1,5 +1,5 @@
 /* BFD back-end for Intel Hex objects.
-   Copyright (C) 1995-2021 Free Software Foundation, Inc.
+   Copyright (C) 1995-2022 Free Software Foundation, Inc.
    Written by Ian Lance Taylor of Cygnus Support <ian@cygnus.com>.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -189,7 +189,7 @@ ihex_mkobject (bfd *abfd)
 /* Read a byte from a BFD.  Set *ERRORPTR if an error occurred.
    Return EOF on error or end of file.  */
 
-static INLINE int
+static inline int
 ihex_get_byte (bfd *abfd, bool *errorptr)
 {
   bfd_byte c;
@@ -942,6 +942,7 @@ ihex_sizeof_headers (bfd *abfd ATTRIBUTE_UNUSED,
 #define ihex_bfd_is_local_label_name		  _bfd_nosymbols_bfd_is_local_label_name
 #define ihex_get_lineno				  _bfd_nosymbols_get_lineno
 #define ihex_find_nearest_line			  _bfd_nosymbols_find_nearest_line
+#define ihex_find_nearest_line_with_alt		  _bfd_nosymbols_find_nearest_line_with_alt
 #define ihex_find_line				  _bfd_nosymbols_find_line
 #define ihex_find_inliner_info			  _bfd_nosymbols_find_inliner_info
 #define ihex_bfd_make_debug_symbol		  _bfd_nosymbols_bfd_make_debug_symbol

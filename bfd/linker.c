@@ -1,5 +1,5 @@
 /* linker.c -- BFD linker routines
-   Copyright (C) 1993-2021 Free Software Foundation, Inc.
+   Copyright (C) 1993-2022 Free Software Foundation, Inc.
    Written by Steve Chamberlain and Ian Lance Taylor, Cygnus Support
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -599,6 +599,8 @@ bfd_wrapped_link_hash_lookup (bfd *abfd,
 	  n[1] = '\0';
 	  strcat (n, l + sizeof REAL - 1);
 	  h = bfd_link_hash_lookup (info->hash, n, create, true, follow);
+	  if (h != NULL)
+	    h->ref_real = 1;
 	  free (n);
 	  return h;
 	}
@@ -981,7 +983,8 @@ _bfd_generic_link_add_archive_symbols
 	  if (last_ar_offset != arsym->file_offset)
 	    {
 	      last_ar_offset = arsym->file_offset;
-	      element = _bfd_get_elt_at_filepos (abfd, last_ar_offset);
+	      element = _bfd_get_elt_at_filepos (abfd, last_ar_offset,
+						 info);
 	      if (element == NULL
 		  || !bfd_check_format (element, bfd_object))
 		goto error_return;
@@ -1420,6 +1423,7 @@ _bfd_generic_link_add_one_symbol (struct bfd_link_info *info,
     {
       row = COMMON_ROW;
       if (!bfd_link_relocatable (info)
+	  && name != NULL
 	  && name[0] == '_'
 	  && name[1] == '_'
 	  && strcmp (name + (name[2] == '_'), "__gnu_lto_slim") == 0)
@@ -1682,7 +1686,7 @@ _bfd_generic_link_add_one_symbol (struct bfd_link_info *info,
 	      cycle = true;
 	      break;
 	    }
-	  if (strcmp (h->u.i.link->root.string, string) == 0)
+	  if (string != NULL && strcmp (h->u.i.link->root.string, string) == 0)
 	    break;
 	  /* Fall through.  */
 	case MDEF:
@@ -2547,9 +2551,8 @@ default_indirect_link_order (bfd *output_bfd,
 {
   asection *input_section;
   bfd *input_bfd;
-  bfd_byte *contents = NULL;
+  bfd_byte *alloced = NULL;
   bfd_byte *new_contents;
-  bfd_size_type sec_size;
   file_ptr loc;
 
   BFD_ASSERT ((output_section->flags & SEC_HAS_CONTENTS) != 0);
@@ -2650,16 +2653,11 @@ default_indirect_link_order (bfd *output_bfd,
   else
     {
       /* Get and relocate the section contents.  */
-      sec_size = (input_section->rawsize > input_section->size
-		  ? input_section->rawsize
-		  : input_section->size);
-      contents = (bfd_byte *) bfd_malloc (sec_size);
-      if (contents == NULL && sec_size != 0)
-	goto error_return;
       new_contents = (bfd_get_relocated_section_contents
-		      (output_bfd, info, link_order, contents,
+		      (output_bfd, info, link_order, NULL,
 		       bfd_link_relocatable (info),
 		       _bfd_generic_link_get_symbols (input_bfd)));
+      alloced = new_contents;
       if (!new_contents)
 	goto error_return;
     }
@@ -2671,11 +2669,11 @@ default_indirect_link_order (bfd *output_bfd,
 				  new_contents, loc, input_section->size))
     goto error_return;
 
-  free (contents);
+  free (alloced);
   return true;
 
  error_return:
-  free (contents);
+  free (alloced);
   return false;
 }
 
@@ -3534,4 +3532,39 @@ _bfd_nolink_bfd_define_start_stop (struct bfd_link_info *info ATTRIBUTE_UNUSED,
 				   asection *sec)
 {
   return (struct bfd_link_hash_entry *) _bfd_ptr_bfd_null_error (sec->owner);
+}
+
+/* Return false if linker should avoid caching relocation infomation
+   and symbol tables of input files in memory.  */
+
+bool
+_bfd_link_keep_memory (struct bfd_link_info * info)
+{
+  bfd *abfd;
+  bfd_size_type size;
+
+  if (!info->keep_memory)
+    return false;
+
+  if (info->max_cache_size == (bfd_size_type) -1)
+    return true;
+
+  abfd = info->input_bfds;
+  size = info->cache_size;
+  do
+    {
+      if (size >= info->max_cache_size)
+	{
+	  /* Over the limit.  Reduce the memory usage.  */
+	  info->keep_memory = false;
+	  return false;
+	}
+      if (!abfd)
+	break;
+      size += abfd->alloc_size;
+      abfd = abfd->link.next;
+    }
+  while (1);
+
+  return true;
 }

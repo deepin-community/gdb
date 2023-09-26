@@ -1,5 +1,5 @@
 /* Simulator for Xilinx MicroBlaze processor
-   Copyright 2009-2022 Free Software Foundation, Inc.
+   Copyright 2009-2023 Free Software Foundation, Inc.
 
    This file is part of GDB, the GNU debugger.
 
@@ -38,7 +38,7 @@
 #define target_big_endian (CURRENT_TARGET_BYTE_ORDER == BFD_ENDIAN_BIG)
 
 static unsigned long
-microblaze_extract_unsigned_integer (unsigned char *addr, int len)
+microblaze_extract_unsigned_integer (const unsigned char *addr, int len)
 {
   unsigned long retval;
   unsigned char *p;
@@ -121,19 +121,19 @@ sim_engine_run (SIM_DESC sd,
 {
   SIM_CPU *cpu = STATE_CPU (sd, 0);
   int needfetch;
-  word inst;
+  signed_4 inst;
   enum microblaze_instr op;
   int memops;
   int bonus_cycles;
   int insts;
   int w;
   int cycs;
-  word WLhash;
-  ubyte carry;
+  signed_4 WLhash;
+  unsigned_1 carry;
   bool imm_unsigned;
   short ra, rb, rd;
   long immword;
-  uword oldpc, newpc;
+  unsigned_4 oldpc, newpc;
   short delay_slot_enable;
   short branch_taken;
   short num_delay_slot; /* UNUSED except as reqd parameter */
@@ -321,7 +321,7 @@ sim_engine_run (SIM_DESC sd,
 }
 
 static int
-microblaze_reg_store (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+microblaze_reg_store (SIM_CPU *cpu, int rn, const void *memory, int length)
 {
   if (rn < NUM_REGS + NUM_SPECIAL && rn >= 0)
     {
@@ -343,7 +343,7 @@ microblaze_reg_store (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
 }
 
 static int
-microblaze_reg_fetch (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+microblaze_reg_fetch (SIM_CPU *cpu, int rn, void *memory, int length)
 {
   long ival;
 
@@ -429,10 +429,7 @@ sim_open (SIM_OPEN_KIND kind, host_callback *cb,
     }
 
   /* Check for/establish the a reference program image.  */
-  if (sim_analyze_program (sd,
-			   (STATE_PROG_ARGV (sd) != NULL
-			    ? *STATE_PROG_ARGV (sd)
-			    : NULL), abfd) != SIM_RC_OK)
+  if (sim_analyze_program (sd, STATE_PROG_FILE (sd), abfd) != SIM_RC_OK)
     {
       free_state (sd);
       return 0;

@@ -1,6 +1,6 @@
 /* Go language support routines for GDB, the GNU debugger.
 
-   Copyright (C) 2012-2022 Free Software Foundation, Inc.
+   Copyright (C) 2012-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -32,7 +32,7 @@
 */
 
 #include "defs.h"
-#include "gdb_obstack.h"
+#include "gdbsupport/gdb_obstack.h"
 #include "block.h"
 #include "symtab.h"
 #include "language.h"
@@ -82,16 +82,16 @@ gccgo_string_p (struct type *type)
       type1 = check_typedef (type1);
 
       if (type0->code () == TYPE_CODE_PTR
-	  && strcmp (TYPE_FIELD_NAME (type, 0), "__data") == 0
+	  && strcmp (type->field (0).name (), "__data") == 0
 	  && type1->code () == TYPE_CODE_INT
-	  && strcmp (TYPE_FIELD_NAME (type, 1), "__length") == 0)
+	  && strcmp (type->field (1).name (), "__length") == 0)
 	{
-	  struct type *target_type = TYPE_TARGET_TYPE (type0);
+	  struct type *target_type = type0->target_type ();
 
 	  target_type = check_typedef (target_type);
 
 	  if (target_type->code () == TYPE_CODE_INT
-	      && TYPE_LENGTH (target_type) == 1
+	      && target_type->length () == 1
 	      && strcmp (target_type->name (), "uint8") == 0)
 	    return 1;
 	}
@@ -333,12 +333,9 @@ unpack_mangled_go_symbol (const char *mangled_name,
    This demangler can't work in all situations,
    thus not too much effort is currently put into it.  */
 
-char *
+gdb::unique_xmalloc_ptr<char>
 go_language::demangle_symbol (const char *mangled_name, int options) const
 {
-  struct obstack tempbuf;
-  char *result;
-  char *name_buf;
   const char *package_name;
   const char *object_name;
   const char *method_type_package_name;
@@ -348,15 +345,16 @@ go_language::demangle_symbol (const char *mangled_name, int options) const
   if (mangled_name == NULL)
     return NULL;
 
-  name_buf = unpack_mangled_go_symbol (mangled_name,
-				       &package_name, &object_name,
-				       &method_type_package_name,
-				       &method_type_object_name,
-				       &method_type_is_pointer);
+  gdb::unique_xmalloc_ptr<char> name_buf
+    (unpack_mangled_go_symbol (mangled_name,
+			       &package_name, &object_name,
+			       &method_type_package_name,
+			       &method_type_object_name,
+			       &method_type_is_pointer));
   if (name_buf == NULL)
     return NULL;
 
-  obstack_init (&tempbuf);
+  auto_obstack tempbuf;
 
   /* Print methods as they appear in "method expressions".  */
   if (method_type_package_name != NULL)
@@ -380,10 +378,7 @@ go_language::demangle_symbol (const char *mangled_name, int options) const
     }
   obstack_grow_str0 (&tempbuf, "");
 
-  result = xstrdup ((const char *) obstack_finish (&tempbuf));
-  obstack_free (&tempbuf, NULL);
-  xfree (name_buf);
-  return result;
+  return make_unique_xstrdup ((const char *) obstack_finish (&tempbuf));
 }
 
 /* Given a Go symbol, return its package or NULL if unknown.
@@ -423,7 +418,7 @@ go_block_package_name (const struct block *block)
 {
   while (block != NULL)
     {
-      struct symbol *function = BLOCK_FUNCTION (block);
+      struct symbol *function = block->function ();
 
       if (function != NULL)
 	{
@@ -438,7 +433,7 @@ go_block_package_name (const struct block *block)
 	  return NULL;
 	}
 
-      block = BLOCK_SUPERBLOCK (block);
+      block = block->superblock ();
     }
 
   return NULL;
@@ -486,11 +481,10 @@ go_language::language_arch_info (struct gdbarch *gdbarch,
 
 static go_language go_language_defn;
 
-static void *
+static struct builtin_go_type *
 build_go_types (struct gdbarch *gdbarch)
 {
-  struct builtin_go_type *builtin_go_type
-    = GDBARCH_OBSTACK_ZALLOC (gdbarch, struct builtin_go_type);
+  struct builtin_go_type *builtin_go_type = new struct builtin_go_type;
 
   builtin_go_type->builtin_void
     = arch_type (gdbarch, TYPE_CODE_VOID, TARGET_CHAR_BIT, "void");
@@ -532,17 +526,17 @@ build_go_types (struct gdbarch *gdbarch)
   return builtin_go_type;
 }
 
-static struct gdbarch_data *go_type_data;
+static const registry<gdbarch>::key<struct builtin_go_type> go_type_data;
 
 const struct builtin_go_type *
 builtin_go_type (struct gdbarch *gdbarch)
 {
-  return (const struct builtin_go_type *) gdbarch_data (gdbarch, go_type_data);
-}
+  struct builtin_go_type *result = go_type_data.get (gdbarch);
+  if (result == nullptr)
+    {
+      result = build_go_types (gdbarch);
+      go_type_data.set (gdbarch, result);
+    }
 
-void _initialize_go_language ();
-void
-_initialize_go_language ()
-{
-  go_type_data = gdbarch_data_register_post_init (build_go_types);
+  return result;
 }

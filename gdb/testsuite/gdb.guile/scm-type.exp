@@ -1,4 +1,4 @@
-# Copyright (C) 2009-2022 Free Software Foundation, Inc.
+# Copyright (C) 2009-2023 Free Software Foundation, Inc.
 
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,10 +19,6 @@
 load_lib gdb-guile.exp
 
 standard_testfile
-
-if [get_compiler_info c++] {
-    return -1
-}
 
 # Build inferior to language specification.
 
@@ -267,7 +263,7 @@ proc test_range {} {
 	    gdb_scm_test_silent_cmd "guile (define f (history-ref 0))" \
 		"get value (f) from history"
 	    gdb_test "guile (print (type-range (field-type (type-field (value-type (value-dereference f)) \"items\"))))" \
-		"= \\(0 0\\)"
+		"= \\(0 (0|-1)\\)"
 	    gdb_test "guile (print (value-subscript (value-field (value-dereference f) \"items\") 0))" \
 		"= 111"
 	    gdb_test "guile (print (value-subscript (value-field (value-dereference f) \"items\") 1))" \

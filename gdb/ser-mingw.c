@@ -1,6 +1,6 @@
 /* Serial interface for local (hardwired) serial ports on Windows systems
 
-   Copyright (C) 2006-2022 Free Software Foundation, Inc.
+   Copyright (C) 2006-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -30,6 +30,7 @@
 #include <sys/types.h>
 
 #include "command.h"
+#include "gdbsupport/buildargv.h"
 
 struct ser_windows_state
 {
@@ -218,8 +219,7 @@ ser_windows_setparity (struct serial *scb, int parity)
       state.fParity = TRUE;
       break;
     default:
-      internal_warning (__FILE__, __LINE__,
-			"Incorrect parity value: %d", parity);
+      internal_warning ("Incorrect parity value: %d", parity);
       return -1;
     }
 
@@ -866,6 +866,12 @@ pipe_windows_open (struct serial *scb, const char *name)
 
   if (name == NULL)
     error_no_arg (_("child command"));
+
+  if (*name == '|')
+    {
+      name++;
+      name = skip_spaces (name);
+    }
 
   gdb_argv argv (name);
 

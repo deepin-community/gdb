@@ -1,5 +1,5 @@
 /* Linux bpf specific support for 64-bit ELF
-   Copyright (C) 2019-2021 Free Software Foundation, Inc.
+   Copyright (C) 2019-2022 Free Software Foundation, Inc.
    Contributed by Oracle Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -40,7 +40,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
   /* This reloc does nothing.  */
   HOWTO (R_BPF_NONE,		/* type */
 	 0,			/* rightshift */
-	 3,			/* size (0 = byte, 1 = short, 2 = long) */
+	 0,			/* size */
 	 0,			/* bitsize */
 	 false,			/* pc_relative */
 	 0,			/* bitpos */
@@ -55,7 +55,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
   /* 64-immediate in LDDW instruction.  */
   HOWTO (R_BPF_INSN_64,		/* type */
 	 0,			/* rightshift */
-	 4,			/* size (0 = byte, 1 = short, 2 = long) */
+	 8,			/* size */
 	 64,			/* bitsize */
 	 false,			/* pc_relative */
 	 32,			/* bitpos */
@@ -70,7 +70,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
   /* 32-immediate in many instructions.  */
   HOWTO (R_BPF_INSN_32,		/* type */
 	 0,			/* rightshift */
-	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 4,			/* size */
 	 32,			/* bitsize */
 	 false,			/* pc_relative */
 	 32,			/* bitpos */
@@ -85,7 +85,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
   /* 16-bit offsets in instructions.  */
   HOWTO (R_BPF_INSN_16,		/* type */
 	 0,			/* rightshift */
-	 1,			/* size (0 = byte, 1 = short, 2 = long) */
+	 2,			/* size */
 	 16,			/* bitsize */
 	 false,			/* pc_relative */
 	 16,			/* bitpos */
@@ -100,7 +100,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
   /* 16-bit PC-relative address in jump instructions.  */
   HOWTO (R_BPF_INSN_DISP16,	/* type */
 	 0,			/* rightshift */
-	 1,			/* size (0 = byte, 1 = short, 2 = long) */
+	 2,			/* size */
 	 16,			/* bitsize */
 	 true,			/* pc_relative */
 	 16,			/* bitpos */
@@ -114,7 +114,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
 
   HOWTO (R_BPF_DATA_8_PCREL,
 	 0,			/* rightshift */
-	 0,			/* size (0 = byte, 1 = short, 2 = long) */
+	 1,			/* size */
 	 8,			/* bitsize */
 	 true,			/* pc_relative */
 	 0,			/* bitpos */
@@ -128,7 +128,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
 
   HOWTO (R_BPF_DATA_16_PCREL,
 	 0,			/* rightshift */
-	 1,			/* size (0 = byte, 1 = short, 2 = long) */
+	 2,			/* size */
 	 16,			/* bitsize */
 	 true,			/* pc_relative */
 	 0,			/* bitpos */
@@ -142,7 +142,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
 
   HOWTO (R_BPF_DATA_32_PCREL,
 	 0,			/* rightshift */
-	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 4,			/* size */
 	 32,			/* bitsize */
 	 true,			/* pc_relative */
 	 0,			/* bitpos */
@@ -156,7 +156,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
 
   HOWTO (R_BPF_DATA_8,
 	 0,			/* rightshift */
-	 0,			/* size (0 = byte, 1 = short, 2 = long) */
+	 1,			/* size */
 	 8,			/* bitsize */
 	 false,			/* pc_relative */
 	 0,			/* bitpos */
@@ -170,7 +170,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
 
   HOWTO (R_BPF_DATA_16,
 	 0,			/* rightshift */
-	 1,			/* size (0 = byte, 1 = short, 2 = long) */
+	 2,			/* size */
 	 16,			/* bitsize */
 	 false,			/* pc_relative */
 	 0,			/* bitpos */
@@ -185,7 +185,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
   /* 32-bit PC-relative address in call instructions.  */
   HOWTO (R_BPF_INSN_DISP32,	/* type */
 	 0,			/* rightshift */
-	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 4,			/* size */
 	 32,			/* bitsize */
 	 true,			/* pc_relative */
 	 32,			/* bitpos */
@@ -200,7 +200,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
   /* 32-bit data.  */
   HOWTO (R_BPF_DATA_32,		/* type */
 	 0,			/* rightshift */
-	 2,			/* size (0 = byte, 1 = short, 2 = long) */
+	 4,			/* size */
 	 32,			/* bitsize */
 	 false,			/* pc_relative */
 	 0,			/* bitpos */
@@ -215,7 +215,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
   /* 64-bit data.  */
   HOWTO (R_BPF_DATA_64,		/* type */
 	 0,			/* rightshift */
-	 4,			/* size (0 = byte, 1 = short, 2 = long) */
+	 8,			/* size */
 	 64,			/* bitsize */
 	 false,			/* pc_relative */
 	 0,			/* bitpos */
@@ -229,7 +229,7 @@ static reloc_howto_type bpf_elf_howto_table [] =
 
   HOWTO (R_BPF_DATA_64_PCREL,
 	 0,			/* rightshift */
-	 4,			/* size (0 = byte, 1 = short, 2 = long) */
+	 8,			/* size */
 	 64,			/* bitsize */
 	 true,			/* pc_relative */
 	 0,			/* bitpos */
@@ -589,16 +589,17 @@ elf64_bpf_merge_private_bfd_data (bfd *ibfd, struct bfd_link_info *info)
 }
 
 /* A generic howto special function for installing BPF relocations.
-   This function will be called by the assembler (via bfd_install_relocation).
+   This function will be called by the assembler (via bfd_install_relocation),
+   and by various get_relocated_section_contents functions.
    At link time, bpf_elf_relocate_section will resolve the final relocations.
 
    BPF instructions are always big endian, and this approach avoids problems in
    bfd_install_relocation.  */
 
 static bfd_reloc_status_type
-bpf_elf_generic_reloc (bfd * abfd, arelent *reloc_entry, asymbol *symbol,
+bpf_elf_generic_reloc (bfd *abfd, arelent *reloc_entry, asymbol *symbol,
 		       void *data, asection *input_section,
-		       bfd *output_bfd,
+		       bfd *output_bfd ATTRIBUTE_UNUSED,
 		       char **error_message ATTRIBUTE_UNUSED)
 {
 
@@ -607,7 +608,16 @@ bpf_elf_generic_reloc (bfd * abfd, arelent *reloc_entry, asymbol *symbol,
   bfd_byte *where;
 
   /* Sanity check that the address is in range.  */
-  if (reloc_entry->address > bfd_get_section_limit (abfd, input_section))
+  bfd_size_type end = bfd_get_section_limit_octets (abfd, input_section);
+  bfd_size_type reloc_size;
+  if (reloc_entry->howto->type == R_BPF_INSN_64)
+    reloc_size = 16;
+  else
+    reloc_size = (reloc_entry->howto->bitsize
+		  + reloc_entry->howto->bitpos) / 8;
+
+  if (reloc_entry->address > end
+      || end - reloc_entry->address < reloc_size)
     return bfd_reloc_outofrange;
 
   /*  Get the symbol value.  */
@@ -640,15 +650,15 @@ bpf_elf_generic_reloc (bfd * abfd, arelent *reloc_entry, asymbol *symbol,
 	 instructions, and the upper 32 bits placed at the very end of the
 	 instruction. that is, there are 32 unused bits between them. */
 
-      bfd_put_32 (output_bfd, (relocation & 0xFFFFFFFF), where + 4);
-      bfd_put_32 (output_bfd, (relocation >> 32), where + 12);
+      bfd_put_32 (abfd, (relocation & 0xFFFFFFFF), where + 4);
+      bfd_put_32 (abfd, (relocation >> 32), where + 12);
     }
   else
     {
       /* For other kinds of relocations, the relocated value simply goes
 	 BITPOS bits from the start of the entry. This is always a multiple
 	 of 8, i.e. whole bytes.  */
-      bfd_put (reloc_entry->howto->bitsize, output_bfd, relocation,
+      bfd_put (reloc_entry->howto->bitsize, abfd, relocation,
 	       where + reloc_entry->howto->bitpos / 8);
     }
 

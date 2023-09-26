@@ -1,6 +1,6 @@
 /* Cache and manage the values of registers for GDB, the GNU debugger.
 
-   Copyright (C) 1986-2022 Free Software Foundation, Inc.
+   Copyright (C) 1986-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -149,6 +149,15 @@ extern void regcache_collect_regset (const struct regset *regset,
 				     const struct regcache *regcache,
 				     int regnum, void *buf, size_t size);
 
+
+/* Return true if a set of registers contains the value of the
+   register numbered REGNUM.  The size of the set of registers is
+   given in SIZE, and the layout of the set of registers is described
+   by MAP.  */
+
+extern bool regcache_map_supplies (const struct regcache_map_entry *map,
+				   int regnum, struct gdbarch *gdbarch,
+				   size_t size);
 
 /* The type of a register.  This function is slightly more efficient
    then its gdbarch vector counterpart since it returns a precomputed
@@ -366,12 +375,32 @@ public:
   void cooked_write_part (int regnum, int offset, int len,
 			  const gdb_byte *buf);
 
-  void supply_regset (const struct regset *regset,
+  /* Transfer a set of registers (as described by REGSET) between
+     REGCACHE and BUF.  If REGNUM == -1, transfer all registers
+     belonging to the regset, otherwise just the register numbered
+     REGNUM.  The REGSET's 'regmap' field must point to an array of
+     'struct regcache_map_entry'.  The valid register numbers in each
+     entry in 'struct regcache_map_entry' are offset by REGBASE.  */
+
+  void supply_regset (const struct regset *regset, int regbase,
 		      int regnum, const void *buf, size_t size);
 
+  void collect_regset (const struct regset *regset, int regbase, int regnum,
+		       void *buf, size_t size) const;
+
+  /* Same as the above, but with REGBASE == 0.  */
+
+  void supply_regset (const struct regset *regset,
+		      int regnum, const void *buf, size_t size)
+  {
+    supply_regset (regset, 0, regnum, buf, size);
+  }
 
   void collect_regset (const struct regset *regset, int regnum,
-		       void *buf, size_t size) const;
+		       void *buf, size_t size) const
+  {
+    collect_regset (regset, 0, regnum, buf, size);
+  }
 
   /* Return REGCACHE's ptid.  */
 
@@ -410,7 +439,7 @@ private:
   /* Transfer a single or all registers belonging to a certain register
      set to or from a buffer.  This is the main worker function for
      regcache_supply_regset and regcache_collect_regset.  */
-  void transfer_regset (const struct regset *regset,
+  void transfer_regset (const struct regset *regset, int regbase,
 			struct regcache *out_regcache,
 			int regnum, const gdb_byte *in_buf,
 			gdb_byte *out_buf, size_t size) const;

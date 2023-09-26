@@ -1,8 +1,8 @@
-Index: gdb-9.2/gdb/configure.nat
+Index: gdb/gdb/configure.nat
 ===================================================================
---- gdb-9.2.orig/gdb/configure.nat
-+++ gdb-9.2/gdb/configure.nat
-@@ -214,7 +214,7 @@ case ${gdb_host} in
+--- gdb.orig/gdb/configure.nat
++++ gdb/gdb/configure.nat
+@@ -215,7 +215,7 @@ case ${gdb_host} in
  	    i386)
  		# Host: Intel 386 running the GNU Hurd
  		NATDEPFILES='i386-gnu-nat.o gnu-nat.o \

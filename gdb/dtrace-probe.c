@@ -1,6 +1,6 @@
 /* DTrace probe support for GDB.
 
-   Copyright (C) 2014-2022 Free Software Foundation, Inc.
+   Copyright (C) 2014-2023 Free Software Foundation, Inc.
 
    Contributed by Oracle, Inc.
 
@@ -129,7 +129,7 @@ public:
 
   /* See probe.h.  */
   struct value *evaluate_argument (unsigned n,
-				   struct frame_info *frame) override;
+				   frame_info_ptr frame) override;
 
   /* See probe.h.  */
   void compile_to_ax (struct agent_expr *aexpr,
@@ -655,8 +655,7 @@ dtrace_probe::get_arg_by_number (unsigned n, struct gdbarch *gdbarch)
     this->build_arg_exprs (gdbarch);
 
   if (n > m_args.size ())
-    internal_error (__FILE__, __LINE__,
-		    _("Probe '%s' has %d arguments, but GDB is requesting\n"
+    internal_error (_("Probe '%s' has %d arguments, but GDB is requesting\n"
 		      "argument %u.  This should not happen.  Please\n"
 		      "report this bug."),
 		    this->get_name ().c_str (),
@@ -684,7 +683,7 @@ dtrace_probe::is_enabled () const
 CORE_ADDR
 dtrace_probe::get_relocated_address (struct objfile *objfile)
 {
-  return this->get_address () + objfile->data_section_offset ();
+  return this->get_address () + objfile->text_section_offset ();
 }
 
 /* Implementation of the get_argument_count method.  */
@@ -709,7 +708,7 @@ dtrace_probe::can_evaluate_arguments () const
 
 struct value *
 dtrace_probe::evaluate_argument (unsigned n,
-				 struct frame_info *frame)
+				 frame_info_ptr frame)
 {
   struct gdbarch *gdbarch = this->get_gdbarch ();
   struct dtrace_probe_arg *arg;
@@ -830,7 +829,7 @@ dtrace_static_probe_ops::get_probes
   (std::vector<std::unique_ptr<probe>> *probesp,
    struct objfile *objfile) const
 {
-  bfd *abfd = objfile->obfd;
+  bfd *abfd = objfile->obfd.get ();
   asection *sect = NULL;
 
   /* Do nothing in case this is a .debug file, instead of the objfile
@@ -851,7 +850,7 @@ dtrace_static_probe_ops::get_probes
 	  if (bfd_malloc_and_get_section (abfd, sect, &dof) && dof != NULL)
 	    dtrace_process_dof (sect, objfile, probesp,
 				(struct dtrace_dof_hdr *) dof);
-	 else
+	  else
 	    complaint (_("could not obtain the contents of"
 			 "section '%s' in objfile `%s'."),
 		       bfd_section_name (sect), bfd_get_filename (abfd));

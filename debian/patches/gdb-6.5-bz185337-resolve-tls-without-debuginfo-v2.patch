@@ -57,7 +57,7 @@ Index: gdb/gdb/printcmd.c
 ===================================================================
 --- gdb.orig/gdb/printcmd.c
 +++ gdb/gdb/printcmd.c
-@@ -1883,6 +1883,10 @@ x_command (const char *exp, int from_tty
+@@ -1875,6 +1875,10 @@ x_command (const char *exp, int from_tty
  
    if (exp != 0 && *exp != 0)
      {

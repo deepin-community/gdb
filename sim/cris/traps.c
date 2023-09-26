@@ -1,5 +1,5 @@
 /* CRIS exception, interrupt, and trap (EIT) support
-   Copyright (C) 2004-2022 Free Software Foundation, Inc.
+   Copyright (C) 2004-2023 Free Software Foundation, Inc.
    Contributed by Axis Communications.
 
 This file is part of the GNU simulators.
@@ -803,7 +803,7 @@ dump_statistics (SIM_CPU *current_cpu)
   SIM_DESC sd = CPU_STATE (current_cpu);
   CRIS_MISC_PROFILE *profp
     = CPU_CRIS_MISC_PROFILE (current_cpu);
-  unsigned64 total = profp->basic_cycle_count;
+  uint64_t total = profp->basic_cycle_count;
 
   /* Historically, these messages have gone to stderr, so we'll keep it
      that way.  It's also easier to then tell it from normal program
@@ -1382,7 +1382,7 @@ make_first_thread (SIM_CPU *current_cpu)
 /* Handle unknown system calls.  Returns (if it does) the syscall
    return value.  */
 
-static USI
+static USI ATTRIBUTE_PRINTF (3, 4)
 cris_unknown_syscall (SIM_CPU *current_cpu, USI pc, char *s, ...)
 {
   SIM_DESC sd = CPU_STATE (current_cpu);
@@ -1442,8 +1442,8 @@ cris_break_13_handler (SIM_CPU *current_cpu, USI callnum, USI arg1,
       sim_engine_halt (sd, current_cpu, NULL, pc, sim_exited, arg1);
     }
 
-  s.p1 = (PTR) sd;
-  s.p2 = (PTR) current_cpu;
+  s.p1 = sd;
+  s.p2 = current_cpu;
   s.read_mem = sim_syscall_read_mem;
   s.write_mem = sim_syscall_write_mem;
 

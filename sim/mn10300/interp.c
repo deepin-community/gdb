@@ -79,8 +79,8 @@ mn10300_pc_set (sim_cpu *cpu, sim_cia pc)
   PC = pc;
 }
 
-static int mn10300_reg_fetch (SIM_CPU *, int, unsigned char *, int);
-static int mn10300_reg_store (SIM_CPU *, int, unsigned char *, int);
+static int mn10300_reg_fetch (SIM_CPU *, int, void *, int);
+static int mn10300_reg_store (SIM_CPU *, int, const void *, int);
 
 /* These default values correspond to expected usage for the chip.  */
 
@@ -268,11 +268,7 @@ sim_open (SIM_OPEN_KIND kind,
   
 
   /* check for/establish the a reference program image */
-  if (sim_analyze_program (sd,
-			   (STATE_PROG_ARGV (sd) != NULL
-			    ? *STATE_PROG_ARGV (sd)
-			    : NULL),
-			   abfd) != SIM_RC_OK)
+  if (sim_analyze_program (sd, STATE_PROG_FILE (sd), abfd) != SIM_RC_OK)
     {
       sim_module_uninstall (sd);
       return 0;
@@ -324,7 +320,7 @@ sim_create_inferior (SIM_DESC sd,
   } else {
     PC = 0;
   }
-  CPU_PC_SET (STATE_CPU (sd, 0), (unsigned64) PC);
+  CPU_PC_SET (STATE_CPU (sd, 0), (uint64_t) PC);
 
   if (STATE_ARCHITECTURE (sd)->mach == bfd_mach_am33_2)
     PSW |= PSW_FE;
@@ -336,10 +332,10 @@ sim_create_inferior (SIM_DESC sd,
    but need to be changed to use the memory map.  */
 
 static int
-mn10300_reg_fetch (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+mn10300_reg_fetch (SIM_CPU *cpu, int rn, void *memory, int length)
 {
   reg_t reg = State.regs[rn];
-  uint8 *a = memory;
+  uint8_t *a = memory;
   a[0] = reg;
   a[1] = reg >> 8;
   a[2] = reg >> 16;
@@ -348,9 +344,9 @@ mn10300_reg_fetch (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
 }
  
 static int
-mn10300_reg_store (SIM_CPU *cpu, int rn, unsigned char *memory, int length)
+mn10300_reg_store (SIM_CPU *cpu, int rn, const void *memory, int length)
 {
-  uint8 *a = memory;
+  const uint8_t *a = memory;
   State.regs[rn] = (a[3] << 24) + (a[2] << 16) + (a[1] << 8) + a[0];
   return length;
 }
