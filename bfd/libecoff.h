@@ -1,5 +1,5 @@
 /* BFD ECOFF object file private structure.
-   Copyright (C) 1993-2021 Free Software Foundation, Inc.
+   Copyright (C) 1993-2022 Free Software Foundation, Inc.
    Written by Ian Lance Taylor, Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -72,7 +72,7 @@ struct ecoff_backend_data
     (bfd *, struct internal_filehdr *, struct internal_aouthdr *);
   /* Read an element from an archive at a given file position.  This
      is needed because OSF/1 3.2 uses a weird archive format.  */
-  bfd *(*get_elt_at_filepos) (bfd *, file_ptr);
+  bfd *(*get_elt_at_filepos) (bfd *, file_ptr, struct bfd_link_info *);
 };
 
 /* ECOFF targets don't support COFF long section names, so this
@@ -293,6 +293,8 @@ extern bool _bfd_ecoff_bfd_is_local_label_name
 extern bool _bfd_ecoff_find_nearest_line
   (bfd *, asymbol **, asection *, bfd_vma,
    const char **, const char **, unsigned int *, unsigned int *);
+#define _bfd_ecoff_find_nearest_line_with_alt \
+  _bfd_nosymbols_find_nearest_line_with_alt
 #define _bfd_ecoff_find_line _bfd_nosymbols_find_line
 #define _bfd_ecoff_bfd_make_debug_symbol _bfd_nosymbols_bfd_make_debug_symbol
 #define _bfd_ecoff_read_minisymbols _bfd_generic_read_minisymbols

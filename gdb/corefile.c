@@ -1,6 +1,6 @@
 /* Core dump and executable file functions above target vector, for GDB.
 
-   Copyright (C) 1986-2022 Free Software Foundation, Inc.
+   Copyright (C) 1986-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -173,8 +173,7 @@ memory_error_message (enum target_xfer_status err,
       return string_printf (_("Memory at address %s unavailable."),
 			    paddress (gdbarch, memaddr));
     default:
-      internal_error (__FILE__, __LINE__,
-		      "unhandled target_xfer_status: %s (%s)",
+      internal_error ("unhandled target_xfer_status: %s (%s)",
 		      target_xfer_status_to_string (err),
 		      plongest (err));
     }
@@ -335,9 +334,9 @@ read_code_unsigned_integer (CORE_ADDR memaddr, int len,
 CORE_ADDR
 read_memory_typed_address (CORE_ADDR addr, struct type *type)
 {
-  gdb_byte *buf = (gdb_byte *) alloca (TYPE_LENGTH (type));
+  gdb_byte *buf = (gdb_byte *) alloca (type->length ());
 
-  read_memory (addr, buf, TYPE_LENGTH (type));
+  read_memory (addr, buf, type->length ());
   return extract_typed_address (buf, type);
 }
 
@@ -395,29 +394,29 @@ write_memory_signed_integer (CORE_ADDR addr, int len,
 const char *gnutarget;
 
 /* Same thing, except it is "auto" not NULL for the default case.  */
-static char *gnutarget_string;
+static std::string gnutarget_string;
 static void
 show_gnutarget_string (struct ui_file *file, int from_tty,
 		       struct cmd_list_element *c,
 		       const char *value)
 {
-  fprintf_filtered (file,
-		    _("The current BFD target is \"%s\".\n"), value);
+  gdb_printf (file,
+	      _("The current BFD target is \"%s\".\n"), value);
 }
 
 static void
 set_gnutarget_command (const char *ignore, int from_tty,
 		       struct cmd_list_element *c)
 {
-  char *gend = gnutarget_string + strlen (gnutarget_string);
+  const char *gend = gnutarget_string.c_str () + gnutarget_string.size ();
+  gend = remove_trailing_whitespace (gnutarget_string.c_str (), gend);
+  gnutarget_string
+    = gnutarget_string.substr (0, gend - gnutarget_string.data ());
 
-  gend = remove_trailing_whitespace (gnutarget_string, gend);
-  *gend = '\0';
-
-  if (strcmp (gnutarget_string, "auto") == 0)
+  if (gnutarget_string == "auto")
     gnutarget = NULL;
   else
-    gnutarget = gnutarget_string;
+    gnutarget = gnutarget_string.c_str ();
 }
 
 /* A completion function for "set gnutarget".  */
@@ -449,8 +448,7 @@ complete_set_gnutarget (struct cmd_list_element *cmd,
 void
 set_gnutarget (const char *newtarget)
 {
-  xfree (gnutarget_string);
-  gnutarget_string = xstrdup (newtarget);
+  gnutarget_string = newtarget;
   set_gnutarget_command (NULL, 0, NULL);
 }
 

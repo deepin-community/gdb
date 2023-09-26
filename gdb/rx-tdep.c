@@ -1,6 +1,6 @@
 /* Target-dependent code for the Renesas RX for GDB, the GNU debugger.
 
-   Copyright (C) 2008-2022 Free Software Foundation, Inc.
+   Copyright (C) 2008-2023 Free Software Foundation, Inc.
 
    Contributed by Red Hat, Inc.
 
@@ -35,6 +35,7 @@
 #include "dwarf2/frame.h"
 #include "remote.h"
 #include "target-descriptions.h"
+#include "gdbarch.h"
 
 #include "elf/rx.h"
 #include "elf-bfd.h"
@@ -68,16 +69,16 @@ enum rx_frame_type {
 };
 
 /* Architecture specific data.  */
-struct gdbarch_tdep
+struct rx_gdbarch_tdep : gdbarch_tdep_base
 {
   /* The ELF header flags specify the multilib used.  */
-  int elf_flags;
+  int elf_flags = 0;
 
   /* Type of PSW and BPSW.  */
-  struct type *rx_psw_type;
+  struct type *rx_psw_type = nullptr;
 
   /* Type of FPSW.  */
-  struct type *rx_fpsw_type;
+  struct type *rx_fpsw_type = nullptr;
 };
 
 /* This structure holds the results of a prologue analysis.  */
@@ -381,7 +382,7 @@ rx_skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc)
    return that struct as the value of this function.  */
 
 static struct rx_prologue *
-rx_analyze_frame_prologue (struct frame_info *this_frame,
+rx_analyze_frame_prologue (frame_info_ptr this_frame,
 			   enum rx_frame_type frame_type,
 			   void **this_prologue_cache)
 {
@@ -410,7 +411,7 @@ rx_analyze_frame_prologue (struct frame_info *this_frame,
    instruction.  */
 
 static enum rx_frame_type
-rx_frame_type (struct frame_info *this_frame, void **this_cache)
+rx_frame_type (frame_info_ptr this_frame, void **this_cache)
 {
   const char *name;
   CORE_ADDR pc, start_pc, lim_pc;
@@ -464,7 +465,7 @@ rx_frame_type (struct frame_info *this_frame, void **this_cache)
    base.  */
 
 static CORE_ADDR
-rx_frame_base (struct frame_info *this_frame, void **this_cache)
+rx_frame_base (frame_info_ptr this_frame, void **this_cache)
 {
   enum rx_frame_type frame_type = rx_frame_type (this_frame, this_cache);
   struct rx_prologue *p
@@ -491,7 +492,7 @@ rx_frame_base (struct frame_info *this_frame, void **this_cache)
 /* Implement the "frame_this_id" method for unwinding frames.  */
 
 static void
-rx_frame_this_id (struct frame_info *this_frame, void **this_cache,
+rx_frame_this_id (frame_info_ptr this_frame, void **this_cache,
 		  struct frame_id *this_id)
 {
   *this_id = frame_id_build (rx_frame_base (this_frame, this_cache),
@@ -501,7 +502,7 @@ rx_frame_this_id (struct frame_info *this_frame, void **this_cache,
 /* Implement the "frame_prev_register" method for unwinding frames.  */
 
 static struct value *
-rx_frame_prev_register (struct frame_info *this_frame, void **this_cache,
+rx_frame_prev_register (frame_info_ptr this_frame, void **this_cache,
 			int regnum)
 {
   enum rx_frame_type frame_type = rx_frame_type (this_frame, this_cache);
@@ -518,9 +519,9 @@ rx_frame_prev_register (struct frame_info *this_frame, void **this_cache,
 
 	  psw_val = rx_frame_prev_register (this_frame, this_cache,
 					    RX_PSW_REGNUM);
-	  psw = extract_unsigned_integer (value_contents_all (psw_val), 4, 
-					  gdbarch_byte_order (
-					    get_frame_arch (this_frame)));
+	  psw = extract_unsigned_integer
+	    (value_contents_all (psw_val).data (), 4,
+	     gdbarch_byte_order (get_frame_arch (this_frame)));
 
 	  if ((psw & 0x20000 /* U bit */) != 0)
 	    return rx_frame_prev_register (this_frame, this_cache,
@@ -575,7 +576,7 @@ exception_frame_p (enum rx_frame_type frame_type)
 
 static int
 rx_frame_sniffer_common (const struct frame_unwind *self,
-			 struct frame_info *this_frame,
+			 frame_info_ptr this_frame,
 			 void **this_cache,
 			 int (*sniff_p)(enum rx_frame_type) )
 {
@@ -608,7 +609,7 @@ rx_frame_sniffer_common (const struct frame_unwind *self,
 
 static int
 rx_frame_sniffer (const struct frame_unwind *self,
-		  struct frame_info *this_frame,
+		  frame_info_ptr this_frame,
 		  void **this_cache)
 {
   return rx_frame_sniffer_common (self, this_frame, this_cache,
@@ -619,7 +620,7 @@ rx_frame_sniffer (const struct frame_unwind *self,
 
 static int
 rx_exception_sniffer (const struct frame_unwind *self,
-			     struct frame_info *this_frame,
+			     frame_info_ptr this_frame,
 			     void **this_cache)
 {
   return rx_frame_sniffer_common (self, this_frame, this_cache,
@@ -671,7 +672,7 @@ rx_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 
   /* Dereference function pointer types.  */
   while (func_type->code () == TYPE_CODE_PTR)
-    func_type = TYPE_TARGET_TYPE (func_type);
+    func_type = func_type->target_type ();
 
   /* The end result had better be a function or a method.  */
   gdb_assert (func_type->code () == TYPE_CODE_FUNC
@@ -706,13 +707,13 @@ rx_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 
       if (return_method == return_method_struct)
 	{
-	  struct type *return_type = TYPE_TARGET_TYPE (func_type);
+	  struct type *return_type = func_type->target_type ();
 
 	  gdb_assert (return_type->code () == TYPE_CODE_STRUCT
 		      || func_type->code () == TYPE_CODE_UNION);
 
-	  if (TYPE_LENGTH (return_type) > 16
-	      || TYPE_LENGTH (return_type) % 4 != 0)
+	  if (return_type->length () > 16
+	      || return_type->length () % 4 != 0)
 	    {
 	      if (write_pass)
 		regcache_cooked_write_unsigned (regcache, RX_R15_REGNUM,
@@ -724,9 +725,9 @@ rx_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
       for (i = 0; i < nargs; i++)
 	{
 	  struct value *arg = args[i];
-	  const gdb_byte *arg_bits = value_contents_all (arg);
+	  const gdb_byte *arg_bits = value_contents_all (arg).data ();
 	  struct type *arg_type = check_typedef (value_type (arg));
-	  ULONGEST arg_size = TYPE_LENGTH (arg_type);
+	  ULONGEST arg_size = arg_type->length ();
 
 	  if (i == 0 && struct_addr != 0
 	      && return_method != return_method_struct
@@ -802,7 +803,7 @@ rx_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 			{
 			  struct type *p_arg_type =
 			    func_type->field (i).type ();
-			  p_arg_size = TYPE_LENGTH (p_arg_type);
+			  p_arg_size = p_arg_type->length ();
 			}
 
 		      sp_off = align_up (sp_off, p_arg_size);
@@ -873,12 +874,12 @@ rx_return_value (struct gdbarch *gdbarch,
 		 gdb_byte *readbuf, const gdb_byte *writebuf)
 {
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
-  ULONGEST valtype_len = TYPE_LENGTH (valtype);
+  ULONGEST valtype_len = valtype->length ();
 
-  if (TYPE_LENGTH (valtype) > 16
+  if (valtype->length () > 16
       || ((valtype->code () == TYPE_CODE_STRUCT
 	   || valtype->code () == TYPE_CODE_UNION)
-	  && TYPE_LENGTH (valtype) % 4 != 0))
+	  && valtype->length () % 4 != 0))
     return RETURN_VALUE_STRUCT_CONVENTION;
 
   if (readbuf)
@@ -944,7 +945,6 @@ static struct gdbarch *
 rx_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 {
   struct gdbarch *gdbarch;
-  struct gdbarch_tdep *tdep;
   int elf_flags;
   tdesc_arch_data_up tdesc_data;
   const struct target_desc *tdesc = info.target_desc;
@@ -963,7 +963,10 @@ rx_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
        arches != NULL;
        arches = gdbarch_list_lookup_by_info (arches->next, &info))
     {
-      if (gdbarch_tdep (arches->gdbarch)->elf_flags != elf_flags)
+      rx_gdbarch_tdep *tdep
+	= gdbarch_tdep<rx_gdbarch_tdep> (arches->gdbarch);
+
+      if (tdep->elf_flags != elf_flags)
 	continue;
 
       return arches->gdbarch;
@@ -994,7 +997,7 @@ rx_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
 
   gdb_assert(tdesc_data != NULL);
 
-  tdep = XCNEW (struct gdbarch_tdep);
+  rx_gdbarch_tdep *tdep = new rx_gdbarch_tdep;
   gdbarch = gdbarch_alloc (&info, tdep);
   tdep->elf_flags = elf_flags;
 
@@ -1060,6 +1063,6 @@ void _initialize_rx_tdep ();
 void
 _initialize_rx_tdep ()
 {
-  register_gdbarch_init (bfd_arch_rx, rx_gdbarch_init);
+  gdbarch_register (bfd_arch_rx, rx_gdbarch_init);
   initialize_tdesc_rx ();
 }

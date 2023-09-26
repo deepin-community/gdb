@@ -1,7 +1,7 @@
 /* Target-dependent header for the RISC-V architecture, for GDB, the
    GNU Debugger.
 
-   Copyright (C) 2018-2022 Free Software Foundation, Inc.
+   Copyright (C) 2018-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -22,6 +22,7 @@
 #define RISCV_TDEP_H
 
 #include "arch/riscv.h"
+#include "gdbarch.h"
 
 /* RiscV register numbers.  */
 enum
@@ -34,6 +35,7 @@ enum
   RISCV_FP_REGNUM = 8,		/* Frame Pointer.  */
   RISCV_A0_REGNUM = 10,		/* First argument.  */
   RISCV_A1_REGNUM = 11,		/* Second argument.  */
+  RISCV_A7_REGNUM = 17,		/* Seventh argument.  */
   RISCV_PC_REGNUM = 32,		/* Program Counter.  */
 
   RISCV_NUM_INTEGER_REGS = 32,
@@ -74,7 +76,7 @@ enum
 };
 
 /* RISC-V specific per-architecture information.  */
-struct gdbarch_tdep
+struct riscv_gdbarch_tdep : gdbarch_tdep_base
 {
   /* Features about the target hardware that impact how the gdbarch is
      configured.  Two gdbarch instances are compatible only if this field
@@ -87,6 +89,12 @@ struct gdbarch_tdep
 
   /* ISA-specific data types.  */
   struct type *riscv_fpreg_d_type = nullptr;
+
+  /* The location of these registers, set to -2 by default so we don't
+     match against -1 which is frequently used to mean "all registers",
+     e.g. in the regcache supply/collect code.  */
+  int fflags_regnum = -2;
+  int frm_regnum = -2;
 
   /* Use for tracking unknown CSRs in the target description.
      UNKNOWN_CSRS_FIRST_REGNUM is the number assigned to the first unknown
@@ -102,6 +110,9 @@ struct gdbarch_tdep
   int duplicate_frm_regnum = -1;
   int duplicate_fcsr_regnum = -1;
 
+  /* Return the expected next PC assuming FRAME is stopped at a syscall
+     instruction.  */
+  CORE_ADDR (*syscall_next_pc) (frame_info_ptr frame) = nullptr;
 };
 
 

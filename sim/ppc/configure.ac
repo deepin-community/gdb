@@ -5,6 +5,10 @@ AC_CONFIG_MACRO_DIRS([../.. ../../config])
 AC_PROG_INSTALL
 AC_PROG_CC
 
+dnl The sim shouldn't be checking $target and changing behavior.  But it is,
+dnl and until we clean that up, we need to expand --target for use below.
+AC_CANONICAL_SYSTEM
+
 AC_ARG_ENABLE(sim-bitsize,
 [  --enable-sim-bitsize=n		Specify target bitsize (32 or 64).],
 [case "${enableval}" in
@@ -14,27 +18,6 @@ esac
 if test x"$silent" != x"yes" && test x"$sim_bitsize" != x""; then
   echo "Setting bitsize flags = $sim_bitsize" 6>&1
 fi],[sim_bitsize=""])dnl
-
-
-AC_ARG_ENABLE(sim-config,
-[  --enable-sim-config=file		Override default config file],
-[case "${enableval}" in
-  yes|no)	AC_MSG_ERROR("No value supplied for --enable-sim-config=file");;
-  *)		if test -f "${srcdir}/${enableval}"; then
-		  sim_config="${enableval}";
-		elif test -f "${srcdir}/${enableval}-config.h"; then
-		  sim_config="${enableval}-config.h"
-		else
-		  AC_MSG_ERROR("Config file $enableval was not found");
-		  sim_config=std-config.h
-		fi;;
-esac
-if test x"$silent" != x"yes" && test x"$sim_config" != x""; then
-  echo "Setting config flags = $sim_config" 6>&1
-fi],[sim_config="std-config.h"
-if test x"$silent" != x"yes"; then
-  echo "Setting config flags = $sim_config" 6>&1
-fi])dnl
 
 
 AC_ARG_ENABLE(sim-decode-mechanism,
@@ -231,16 +214,6 @@ if test x"$silent" != x"yes"; then
   echo "Setting hardware to $sim_hw_src, $sim_hw_obj"
 fi])dnl
 
-AC_ARG_ENABLE(sim-hostbitsize,
-[  --enable-sim-hostbitsize=32|64	Specify host bitsize (32 or 64).],
-[case "${enableval}" in
-  32|64) sim_hostbitsize="-DWITH_HOST_WORD_BITSIZE=$enableval";;
-  *)	 AC_MSG_ERROR("--enable-sim-hostbitsize was given $enableval.  Expected 32 or 64"); sim_hostbitsize="";;
-esac
-if test x"$silent" != x"yes" && test x"$sim_hostbitsize" != x""; then
-  echo "Setting hostbitsize flags = $sim_hostbitsize" 6>&1
-fi],[sim_hostbitsize=""])dnl
-
 
 AC_ARG_ENABLE(sim-icache,
 [  --enable-sim-icache=size		Specify instruction-decode cache size and type.],
@@ -354,28 +327,6 @@ if test x"$silent" != x"yes"; then
 fi])dnl
 
 
-AC_ARG_ENABLE(sim-packages,
-[  --enable-sim-packages=list		Specify the packages to be included in the build.],
-[packages=disklabel
-case "${enableval}" in
-  yes)	;;
-  no)	AC_MSG_ERROR("List of packages must be specified for --enable-sim-packages"); packages="";;
-  ,*)   packages="${packages}${enableval}";;
-  *,)   packages="${enableval}${packages}";;
-  *)	packages="${enableval}"'';;
-esac
-sim_pk_src=`echo $packages | sed -e 's/,/.c pk_/g' -e 's/^/pk_/' -e 's/$/.c/'`
-sim_pk_obj=`echo $sim_pk_src | sed -e 's/\.c/.o/g'`
-if test x"$silent" != x"yes" && test x"$packages" != x""; then
-  echo "Setting packages to $sim_pk_src, $sim_pk_obj"
-fi],[packages=disklabel
-sim_pk_src=`echo $packages | sed -e 's/,/.c pk_/g' -e 's/^/pk_/' -e 's/$/.c/'`
-sim_pk_obj=`echo $sim_pk_src | sed -e 's/\.c/.o/g'`
-if test x"$silent" != x"yes"; then
-  echo "Setting packages to $sim_pk_src, $sim_pk_obj"
-fi])dnl
-
-
 AC_ARG_ENABLE(sim-smp,
 [  --enable-sim-smp=n			Specify number of processors to configure for.],
 [case "${enableval}" in
@@ -418,43 +369,6 @@ if test x"$silent" != x"yes" && test x"$sim_timebase" != x""; then
 fi],[sim_timebase=""])dnl
 
 
-dnl TODO: Switch to common $(WARN_CFLAGS).
-sim_warnings="-Wall -Wdeclaration-after-statement -Wpointer-arith
--Wno-unused -Wunused-value -Wunused-function
--Wno-switch -Wno-char-subscripts
--Wempty-body -Wunused-but-set-parameter
--Wno-error=maybe-uninitialized
--Wno-missing-declarations
--Wno-missing-prototypes
--Wdeclaration-after-statement -Wmissing-parameter-type
--Wno-pointer-sign
--Wold-style-declaration -Wold-style-definition
-"
-AC_ARG_ENABLE(sim-warnings,
-[  --enable-sim-warnings=opts		Extra CFLAGS for turning on compiler warnings except for idecode.o, semantics.o and psim.o],
-[case "${enableval}" in
-  yes)	;;
-  no)	sim_warnings="-w";;
-  *)	sim_warnings=`echo "${enableval}" | sed -e "s/,/ /g"`;;
-esac
-if test x"$silent" != x"yes" && test x"$sim_warnings" != x""; then
-  echo "Setting warning flags = $sim_warnings" 6>&1
-fi])dnl
-if test "x${sim_warnings}" != x -a "x$GCC" = xyes; then
-  AC_MSG_CHECKING(compiler warning flags)
-  build_warnings="${sim_warnings}"
-  sim_warnings=
-  for w in ${build_warnings}; do
-    dnl Check that GCC accepts it
-    saved_CFLAGS="$CFLAGS"
-    CFLAGS="$CFLAGS -Werror $w"
-    AC_TRY_COMPILE([],[],sim_warnings="${sim_warnings} $w",)
-    CFLAGS="$saved_CFLAGS"
-  done
-  AC_MSG_RESULT(${sim_warnings})
-fi
-
-
 AC_ARG_ENABLE(sim-xor-endian,
 [  --enable-sim-xor-endian=n		Specify number bytes involved in PowerPC XOR bi-endian mode (default 8).],
 [case "${enableval}" in
@@ -466,16 +380,6 @@ if test x"$silent" != x"yes" && test x"$sim_xor_endian" != x""; then
   echo "Setting xor-endian flag = $sim_xor_endian" 6>&1
 fi],[sim_xor_endian=""])dnl
 
-
-case ${host} in
-  *mingw32*)
-    AC_DEFINE(USE_WIN32API, 1,
-              [Define if we should use the Windows API, instead of the 
-	       POSIX API.  On Windows, we use the Windows API when 
-	       building for MinGW, but the POSIX API when building 
-	       for Cygwin.])
-    ;;
-esac	    
 
 AC_CONFIG_HEADER(config.h:config.in)
 
@@ -576,56 +480,6 @@ fi
 
 AC_CHECK_TYPES(long long)
 
-dnl Figure out if /dev/zero exists or not
-sim_devzero=""
-AC_MSG_CHECKING(for /dev/zero)
-AC_CACHE_VAL(ac_cv_devzero,
-[AC_TRY_RUN([#include <fcntl.h>
-main () {
-  char buf[2048];
-  int i;
-  int fd = open ("/dev/zero", O_RDONLY);
-  if (fd < 0)
-    return 1;
-  for (i = 0; i < sizeof (buf); i++)
-    buf[i] = 1;
-  if (read (fd, buf, sizeof (buf)) != sizeof (buf))
-    return 1;
-  for (i = 0; i < sizeof (buf); i++)
-    if (buf[i])
-      return 1;
-  return 0;
-}],[ac_cv_devzero=yes],[ac_cv_devzero=no],[ac_cv_devzero=no])])
-AC_MSG_RESULT($ac_cv_devzero)
-if test $ac_cv_devzero = yes; then
-  sim_devzero="-DHAVE_DEVZERO"
-else
-  sim_devzero=""
-fi
-
-dnl Figure out if we are in the new Cygnus tree with a common directory or not
-AC_MSG_CHECKING(for common simulator directory)
-if test -f "${srcdir}/../common/callback.c"; then
-  AC_MSG_RESULT(yes)
-  sim_callback="callback.o targ-map.o"
-  sim_targ_vals="targ-vals.h targ-map.c targ-vals.def"
-else
-  AC_MSG_RESULT(no)
-  sim_callback=""
-  sim_targ_vals=""
-fi
-
-AC_MSG_CHECKING(for common simulator directory fpu implementation)
-if test -f "${srcdir}/../common/sim-fpu.c"; then
-  AC_MSG_RESULT(yes)
-  sim_fpu_cflags="-DHAVE_COMMON_FPU -I../common -I${srcdir}/../common"
-  sim_fpu="sim-fpu.o"
-else
-  AC_MSG_RESULT(no)
-  sim_fpu_cflags=
-  sim_fpu=
-fi
-
 # Since we run commands on the build system, we have to create a
 # separate config header for the build system if build != host.
 if test x$host = x$build; then
@@ -657,9 +511,7 @@ else
   rm -rf $tempdir
 fi
 
-AC_SUBST(sim_warnings)
 AC_SUBST(sim_line_nr)
-AC_SUBST(sim_config)
 AC_SUBST(sim_opcode)
 AC_SUBST(sim_switch)
 AC_SUBST(sim_dup)
@@ -669,8 +521,6 @@ AC_SUBST(sim_filter)
 AC_SUBST(sim_icache)
 AC_SUBST(sim_hw_src)
 AC_SUBST(sim_hw_obj)
-AC_SUBST(sim_pk_src)
-AC_SUBST(sim_pk_obj)
 AC_SUBST(sim_xor_endian)
 AC_SUBST(sim_smp)
 AC_SUBST(sim_igen_smp)
@@ -683,11 +533,6 @@ AC_SUBST(sim_model)
 AC_SUBST(sim_default_model)
 AC_SUBST(sim_model_issue)
 AC_SUBST(sim_termio)
-AC_SUBST(sim_devzero)
-AC_SUBST(sim_callback)
-AC_SUBST(sim_targ_vals)
-AC_SUBST(sim_fpu_cflags)
-AC_SUBST(sim_fpu)
 
 AC_OUTPUT(Makefile,
 [case x$CONFIG_HEADERS in xconfig.h:config.in) echo > stamp-h ;; esac])

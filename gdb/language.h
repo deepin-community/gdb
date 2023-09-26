@@ -1,6 +1,6 @@
 /* Source-language-related definitions for GDB.
 
-   Copyright (C) 1991-2022 Free Software Foundation, Inc.
+   Copyright (C) 1991-2023 Free Software Foundation, Inc.
 
    Contributed by the Department of Computer Science at the State University
    of New York at Buffalo.
@@ -30,7 +30,7 @@
 /* Forward decls for prototypes.  */
 struct value;
 struct objfile;
-struct frame_info;
+class frame_info_ptr;
 struct ui_file;
 struct value_print_options;
 struct type_print_options;
@@ -282,6 +282,13 @@ struct language_defn
 
   virtual const char *natural_name () const = 0;
 
+  /* Digit separator of the language.  */
+
+  virtual const char *get_digit_separator () const
+  {
+    return " ";
+  }
+
   /* Return a vector of file extensions for this language.  The extension
      must include the ".", like ".c".  If this language doesn't need to
      provide any filename extensions, this may be an empty vector (which is
@@ -314,7 +321,7 @@ struct language_defn
 
   virtual struct value *read_var_value (struct symbol *var,
 					const struct block *var_block,
-					struct frame_info *frame) const;
+					frame_info_ptr frame) const;
 
   /* Return information about whether TYPE should be passed
      (and returned) by reference at the language level.  The default
@@ -325,6 +332,14 @@ struct language_defn
 	(struct type *type) const
   {
     return {};
+  }
+
+  /* Return true if SYMBOL represents an entity that is not
+     supposed to be seen by the user.  To be used to filter symbols
+     during printing.  */
+  virtual bool symbol_printing_suppressed (struct symbol *symbol) const
+  {
+    return false;
   }
 
   /* The per-architecture (OS/ABI) language information.  */
@@ -422,17 +437,25 @@ struct language_defn
 
      The resulting string should be of the form that will be
      installed into a symbol.  */
-  virtual bool sniff_from_mangled_name (const char *mangled,
-					char **demangled) const
+  virtual bool sniff_from_mangled_name
+       (const char *mangled, gdb::unique_xmalloc_ptr<char> *demangled) const
   {
     *demangled = nullptr;
     return false;
   }
 
   /* Return demangled language symbol version of MANGLED, or NULL.  */
-  virtual char *demangle_symbol (const char *mangled, int options) const
+  virtual gdb::unique_xmalloc_ptr<char> demangle_symbol (const char *mangled,
+							 int options) const
   {
     return nullptr;
+  }
+
+  /* Return true if this class' implementation of print_type can
+     handle the /o modifier.  */
+  virtual bool can_print_type_offsets () const
+  {
+    return false;
   }
 
   /* Print TYPE to STREAM using syntax appropriate for this language.
@@ -448,7 +471,7 @@ struct language_defn
      If that PC falls in a trampoline belonging to this language, return
      the address of the first pc in the real function, or 0 if it isn't a
      language tramp for this language.  */
-  virtual CORE_ADDR skip_trampoline (struct frame_info *fi, CORE_ADDR pc) const
+  virtual CORE_ADDR skip_trampoline (frame_info_ptr fi, CORE_ADDR pc) const
   {
     return (CORE_ADDR) 0;
   }
@@ -566,7 +589,7 @@ struct language_defn
   /* Return false if the language has first-class arrays.  Return true if
      there are no array values, and array objects decay to pointers, as in
      C.  The default is true as currently most supported languages behave
-     in this manor.  */
+     in this manner.  */
 
   virtual bool c_style_arrays_p () const
   { return true; }
@@ -741,20 +764,6 @@ extern void language_info ();
 extern enum language set_language (enum language);
 
 
-/* This page contains functions that return things that are
-   specific to languages.  Each of these functions is based on
-   the current setting of working_lang, which the user sets
-   with the "set language" command.  */
-
-#define LA_PRINT_TYPE(type,varstring,stream,show,level,flags)		\
-  (current_language->print_type(type,varstring,stream,show,level,flags))
-
-#define LA_PRINT_CHAR(ch, type, stream) \
-  (current_language->printchar (ch, type, stream))
-#define LA_PRINT_STRING(stream, elttype, string, length, encoding, force_ellipses, options) \
-  (current_language->printstr (stream, elttype, string, length, \
-			       encoding, force_ellipses,options))
-
 /* Test a character to decide whether it can be printed in literal form
    or needs to be printed in another representation.  For example,
    in C the literal form of the character with octal value 141 is 'a'
@@ -766,17 +775,9 @@ extern enum language set_language (enum language);
    && ((c) < 0x7F || (c) >= 0xA0)	\
    && (!sevenbit_strings || (c) < 0x80))
 
-/* Type predicates */
-
-extern int pointer_type (struct type *);
-
 /* Error messages */
 
 extern void range_error (const char *, ...) ATTRIBUTE_PRINTF (1, 2);
-
-/* Data:  Does this value represent "truth" to the current language?  */
-
-extern int value_true (struct value *);
 
 /* Misc:  The string representing a particular enum language.  */
 
@@ -788,11 +789,12 @@ extern const char *language_str (enum language);
 
 /* Check for a language-specific trampoline.  */
 
-extern CORE_ADDR skip_language_trampoline (struct frame_info *, CORE_ADDR pc);
+extern CORE_ADDR skip_language_trampoline (frame_info_ptr, CORE_ADDR pc);
 
 /* Return demangled language symbol, or NULL.  */
-extern char *language_demangle (const struct language_defn *current_language, 
-				const char *mangled, int options);
+extern gdb::unique_xmalloc_ptr<char> language_demangle
+     (const struct language_defn *current_language,
+      const char *mangled, int options);
 
 /* Return information about whether TYPE should be passed
    (and returned) by reference at the language level.  */

@@ -1,6 +1,6 @@
 /* TUI display locator.
 
-   Copyright (C) 1998-2022 Free Software Foundation, Inc.
+   Copyright (C) 1998-2023 Free Software Foundation, Inc.
 
    Contributed by Hewlett-Packard Company.
 
@@ -181,19 +181,21 @@ tui_locator_window::make_status_line () const
       string.puts (pc_buf);
     }
 
-  if (string.size () < status_size)
-    string.puts (n_spaces (status_size - string.size ()));
-  else if (string.size () > status_size)
-    string.string ().erase (status_size, string.size ());
+  std::string string_val = string.release ();
 
-  return std::move (string.string ());
+  if (string.size () < status_size)
+    string_val.append (status_size - string.size (), ' ');
+  else if (string.size () > status_size)
+    string_val.erase (status_size, string.size ());
+
+  return string_val;
 }
 
 /* Get a printable name for the function at the address.  The symbol
    name is demangled if demangling is turned on.  Returns a pointer to
    a static area holding the result.  */
 static char*
-tui_get_function_from_frame (struct frame_info *fi)
+tui_get_function_from_frame (frame_info_ptr fi)
 {
   static char name[256];
   string_file stream;
@@ -249,7 +251,7 @@ tui_locator_window::rerender ()
    subsequently refreshed), false otherwise.  */
 
 bool
-tui_show_frame_info (struct frame_info *fi)
+tui_show_frame_info (frame_info_ptr fi)
 {
   bool locator_changed_p;
 

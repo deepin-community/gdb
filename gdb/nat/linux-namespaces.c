@@ -1,6 +1,6 @@
 /* Linux namespaces(7) support.
 
-   Copyright (C) 2015-2022 Free Software Foundation, Inc.
+   Copyright (C) 2015-2023 Free Software Foundation, Inc.
 
    This file is part of GDB.
 
@@ -520,13 +520,8 @@ static ssize_t
 mnsh_handle_open (int sock, const char *filename,
 		  int flags, mode_t mode)
 {
-  int fd = gdb_open_cloexec (filename, flags, mode);
-  ssize_t result = mnsh_return_fd (sock, fd, errno);
-
-  if (fd >= 0)
-    close (fd);
-
-  return result;
+  scoped_fd fd = gdb_open_cloexec (filename, flags, mode);
+  return mnsh_return_fd (sock, fd.get (), errno);
 }
 
 /* Handle a MNSH_REQ_UNLINK message.  Must be async-signal-safe.  */
@@ -739,8 +734,7 @@ mnsh_maybe_mourn_peer (void)
 	  if (errno == ECHILD)
 	    warning (_("mount namespace helper vanished?"));
 	  else
-	    internal_warning (__FILE__, __LINE__,
-			      _("unhandled error %d"), errno);
+	    internal_warning (_("unhandled error %d"), errno);
 	}
       else if (pid == helper->pid)
 	{
@@ -751,12 +745,10 @@ mnsh_maybe_mourn_peer (void)
 	    warning (_("mount namespace helper killed by signal %d"),
 		     WTERMSIG (status));
 	  else
-	    internal_warning (__FILE__, __LINE__,
-			      _("unhandled status %d"), status);
+	    internal_warning (_("unhandled status %d"), status);
 	}
       else
-	internal_warning (__FILE__, __LINE__,
-			  _("unknown pid %d"), pid);
+	internal_warning (_("unknown pid %d"), pid);
 
       /* Something unrecoverable happened.  */
       helper->pid = -1;
@@ -901,7 +893,7 @@ linux_mntns_access_fs (pid_t pid)
   if (ns == NULL)
     return MNSH_FS_DIRECT;
 
-  fd = gdb_open_cloexec (linux_ns_filename (ns, pid), O_RDONLY, 0);
+  fd = gdb_open_cloexec (linux_ns_filename (ns, pid), O_RDONLY, 0).release ();
   if (fd < 0)
     return MNSH_FS_ERROR;
 
@@ -968,7 +960,7 @@ linux_mntns_open_cloexec (pid_t pid, const char *filename,
     return -1;
 
   if (access == MNSH_FS_DIRECT)
-    return gdb_open_cloexec (filename, flags, mode);
+    return gdb_open_cloexec (filename, flags, mode).release ();
 
   gdb_assert (access == MNSH_FS_HELPER);
 

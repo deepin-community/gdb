@@ -1,5 +1,5 @@
 /* Plugin support for BFD.
-   Copyright (C) 2009-2021 Free Software Foundation, Inc.
+   Copyright (C) 2009-2022 Free Software Foundation, Inc.
 
    This file is part of BFD, the Binary File Descriptor library.
 
@@ -83,6 +83,7 @@ dlerror (void)
 #define bfd_plugin_bfd_is_target_special_symbol	      _bfd_bool_bfd_asymbol_false
 #define bfd_plugin_get_lineno			      _bfd_nosymbols_get_lineno
 #define bfd_plugin_find_nearest_line		      _bfd_nosymbols_find_nearest_line
+#define bfd_plugin_find_nearest_line_with_alt	      _bfd_nosymbols_find_nearest_line_with_alt
 #define bfd_plugin_find_line			      _bfd_nosymbols_find_line
 #define bfd_plugin_find_inliner_info		      _bfd_nosymbols_find_inliner_info
 #define bfd_plugin_get_symbol_version_string	      _bfd_nosymbols_get_symbol_version_string
@@ -192,6 +193,7 @@ int
 bfd_plugin_open_input (bfd *ibfd, struct ld_plugin_input_file *file)
 {
   bfd *iobfd;
+  int fd;
 
   iobfd = ibfd;
   while (iobfd->my_archive
@@ -202,50 +204,60 @@ bfd_plugin_open_input (bfd *ibfd, struct ld_plugin_input_file *file)
   if (!iobfd->iostream && !bfd_open_file (iobfd))
     return 0;
 
-  /* The plugin API expects that the file descriptor won't be closed
-     and reused as done by the bfd file cache.  So open it again.
-     dup isn't good enough.  plugin IO uses lseek/read while BFD uses
-     fseek/fread.  It isn't wise to mix the unistd and stdio calls on
-     the same underlying file descriptor.  */
-  file->fd = open (file->name, O_RDONLY | O_BINARY);
-  if (file->fd < 0)
+  /* Reuse the archive plugin file descriptor.  */
+  if (iobfd != ibfd)
+    fd = iobfd->archive_plugin_fd;
+  else
+    fd = -1;
+
+  if (fd < 0)
     {
+      /* The plugin API expects that the file descriptor won't be closed
+	 and reused as done by the bfd file cache.  So open it again.
+	 dup isn't good enough.  plugin IO uses lseek/read while BFD uses
+	 fseek/fread.  It isn't wise to mix the unistd and stdio calls on
+	 the same underlying file descriptor.  */
+      fd = open (file->name, O_RDONLY | O_BINARY);
+      if (fd < 0)
+	{
 #ifndef EMFILE
-      return 0;
+	  return 0;
 #else
-      if (errno != EMFILE)
-	return 0;
+	  if (errno != EMFILE)
+	    return 0;
 
 #ifdef HAVE_GETRLIMIT
-      struct rlimit lim;
+	  struct rlimit lim;
 
-      /* Complicated links involving lots of files and/or large archives
-	 can exhaust the number of file descriptors available to us.
-	 If possible, try to allocate more descriptors.  */
-      if (getrlimit (RLIMIT_NOFILE, & lim) == 0
-	  && lim.rlim_cur < lim.rlim_max)
-	{
-	  lim.rlim_cur = lim.rlim_max;
-	  if (setrlimit (RLIMIT_NOFILE, &lim) == 0)
-	    file->fd = open (file->name, O_RDONLY | O_BINARY);
+	  /* Complicated links involving lots of files and/or large
+	     archives can exhaust the number of file descriptors
+	     available to us.  If possible, try to allocate more
+	     descriptors.  */
+	  if (getrlimit (RLIMIT_NOFILE, & lim) == 0
+	      && lim.rlim_cur < lim.rlim_max)
+	    {
+	      lim.rlim_cur = lim.rlim_max;
+	      if (setrlimit (RLIMIT_NOFILE, &lim) == 0)
+		fd = open (file->name, O_RDONLY | O_BINARY);
+	    }
+
+	  if (fd < 0)
+#endif
+	    {
+	      _bfd_error_handler (_("plugin framework: out of file descriptors. Try using fewer objects/archives\n"));
+	      return 0;
+	    }
+#endif
 	}
-
-      if (file->fd < 0)
-#endif
-	{
-	  _bfd_error_handler (_("plugin framework: out of file descriptors. Try using fewer objects/archives\n"));
-	  return 0;
-	} 
-#endif
-   }
+    }
 
   if (iobfd == ibfd)
     {
       struct stat stat_buf;
 
-      if (fstat (file->fd, &stat_buf))
+      if (fstat (fd, &stat_buf))
 	{
-	  close(file->fd);
+	  close (fd);
 	  return 0;
 	}
 
@@ -254,10 +266,49 @@ bfd_plugin_open_input (bfd *ibfd, struct ld_plugin_input_file *file)
     }
   else
     {
+      /* Cache the archive plugin file descriptor.  */
+      iobfd->archive_plugin_fd = fd;
+      iobfd->archive_plugin_fd_open_count++;
+
       file->offset = ibfd->origin;
       file->filesize = arelt_size (ibfd);
     }
+
+  file->fd = fd;
   return 1;
+}
+
+/* Close the plugin file descriptor FD.  If ABFD isn't NULL, it is an
+   archive member.   */
+
+void
+bfd_plugin_close_file_descriptor (bfd *abfd, int fd)
+{
+  if (abfd == NULL)
+    close (fd);
+  else
+    {
+      while (abfd->my_archive
+	     && !bfd_is_thin_archive (abfd->my_archive))
+	abfd = abfd->my_archive;
+
+      /* Close the file descriptor if there is no archive plugin file
+	 descriptor.  */
+      if (abfd->archive_plugin_fd == -1)
+	{
+	  close (fd);
+	  return;
+	}
+
+      abfd->archive_plugin_fd_open_count--;
+      /* Dup the archive plugin file descriptor for later use, which
+	 will be closed by _bfd_archive_close_and_cleanup.  */
+      if (abfd->archive_plugin_fd_open_count == 0)
+	{
+	  abfd->archive_plugin_fd = dup (fd);
+	  close (fd);
+	}
+    }
 }
 
 static int
@@ -271,7 +322,9 @@ try_claim (bfd *abfd)
       && current_plugin->claim_file)
     {
       current_plugin->claim_file (&file, &claimed);
-      close (file.fd);
+      bfd_plugin_close_file_descriptor ((abfd->my_archive != NULL
+					 ? abfd : NULL),
+					file.fd);
     }
 
   return claimed;
@@ -565,7 +618,7 @@ bfd_plugin_bfd_copy_private_symbol_data (bfd *ibfd ATTRIBUTE_UNUSED,
 }
 
 static bool
-bfd_plugin_bfd_print_private_bfd_data (bfd *abfd ATTRIBUTE_UNUSED, PTR ptr ATTRIBUTE_UNUSED)
+bfd_plugin_bfd_print_private_bfd_data (bfd *abfd ATTRIBUTE_UNUSED, void *ptr ATTRIBUTE_UNUSED)
 {
   BFD_ASSERT (0);
   return true;
@@ -697,7 +750,7 @@ bfd_plugin_canonicalize_symtab (bfd *abfd,
 
 static void
 bfd_plugin_print_symbol (bfd *abfd ATTRIBUTE_UNUSED,
-			 PTR afile ATTRIBUTE_UNUSED,
+			 void *afile ATTRIBUTE_UNUSED,
 			 asymbol *symbol ATTRIBUTE_UNUSED,
 			 bfd_print_symbol_type how ATTRIBUTE_UNUSED)
 {

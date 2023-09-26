@@ -1,5 +1,5 @@
 /* COFF specific linker code.
-   Copyright (C) 1994-2021 Free Software Foundation, Inc.
+   Copyright (C) 1994-2022 Free Software Foundation, Inc.
    Written by Ian Lance Taylor, Cygnus Support.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -896,10 +896,8 @@ _bfd_coff_final_link (bfd *abfd,
 	      asymbol *sym = bfd_get_outsymbols (sub) [i];
 	      file_ptr pos;
 	      struct internal_syment isym;
-	      union internal_auxent iaux;
-	      bfd_size_type string_size = 0, indx;
 	      bfd_vma written = 0;
-	      bool rewrite = false, hash;
+	      bool rewrite = false;
 
 	      if (! (sym->flags & BSF_LOCAL)
 		  || (sym->flags & (BSF_SECTION_SYM | BSF_DEBUGGING_RELOC
@@ -925,53 +923,11 @@ _bfd_coff_final_link (bfd *abfd,
 					     * symesz;
 	      if (bfd_seek (abfd, pos, SEEK_SET) != 0)
 		goto error_return;
-	      if (! coff_write_alien_symbol(abfd, sym, &isym, &iaux, &written,
-					    &string_size, NULL, NULL))
+	      if (! coff_write_alien_symbol(abfd, sym, &isym, &written,
+					    flaginfo.strtab,
+					    !flaginfo.info->traditional_format,
+					    NULL, NULL))
 		goto error_return;
-
-	      hash = !flaginfo.info->traditional_format;
-
-	      if (string_size >= 6 && isym.n_sclass == C_FILE
-		  && ! isym._n._n_n._n_zeroes && isym.n_numaux)
-		{
-		  indx = _bfd_stringtab_add (flaginfo.strtab, ".file", hash,
-					     false);
-		  if (indx == (bfd_size_type) -1)
-		    goto error_return;
-		  isym._n._n_n._n_offset = STRING_SIZE_SIZE + indx;
-		  bfd_coff_swap_sym_out (abfd, &isym, flaginfo.outsyms);
-		  if (bfd_seek (abfd, pos, SEEK_SET) != 0
-		      || bfd_bwrite (flaginfo.outsyms, symesz,
-				     abfd) != symesz)
-		    goto error_return;
-		  string_size -= 6;
-		}
-
-	      if (string_size)
-		{
-		  indx = _bfd_stringtab_add (flaginfo.strtab,
-					     bfd_asymbol_name (sym), hash,
-					     false);
-		  if (indx == (bfd_size_type) -1)
-		    goto error_return;
-		  if (isym.n_sclass != C_FILE)
-		    {
-		      isym._n._n_n._n_offset = STRING_SIZE_SIZE + indx;
-		      bfd_coff_swap_sym_out (abfd, &isym, flaginfo.outsyms);
-		      rewrite = true;
-		    }
-		  else
-		    {
-		      BFD_ASSERT (isym.n_numaux == 1);
-		      iaux.x_file.x_n.x_offset = STRING_SIZE_SIZE + indx;
-		      bfd_coff_swap_aux_out (abfd, &iaux, isym.n_type, C_FILE,
-					     0, 1, flaginfo.outsyms + symesz);
-		      if (bfd_seek (abfd, pos + symesz, SEEK_SET) != 0
-			  || bfd_bwrite (flaginfo.outsyms + symesz, symesz,
-					 abfd) != symesz)
-			goto error_return;
-		    }
-		}
 
 	      if (isym.n_sclass == C_FILE)
 		{
@@ -2006,13 +1962,13 @@ _bfd_coff_link_input_bfd (struct coff_final_link_info *flaginfo, bfd *input_bfd)
 		{
 		  /* If this is a long filename, we must put it in the
 		     string table.  */
-		  if (auxp->x_file.x_n.x_zeroes == 0
-		      && auxp->x_file.x_n.x_offset != 0)
+		  if (auxp->x_file.x_n.x_n.x_zeroes == 0
+		      && auxp->x_file.x_n.x_n.x_offset != 0)
 		    {
 		      const char *filename;
 		      bfd_size_type indx;
 
-		      BFD_ASSERT (auxp->x_file.x_n.x_offset
+		      BFD_ASSERT (auxp->x_file.x_n.x_n.x_offset
 				  >= STRING_SIZE_SIZE);
 		      if (strings == NULL)
 			{
@@ -2020,15 +1976,15 @@ _bfd_coff_link_input_bfd (struct coff_final_link_info *flaginfo, bfd *input_bfd)
 			  if (strings == NULL)
 			    return false;
 			}
-		      if ((bfd_size_type) auxp->x_file.x_n.x_offset >= obj_coff_strings_len (input_bfd))
+		      if ((bfd_size_type) auxp->x_file.x_n.x_n.x_offset >= obj_coff_strings_len (input_bfd))
 			filename = _("<corrupt>");
 		      else
-			filename = strings + auxp->x_file.x_n.x_offset;
+			filename = strings + auxp->x_file.x_n.x_n.x_offset;
 		      indx = _bfd_stringtab_add (flaginfo->strtab, filename,
 						 hash, copy);
 		      if (indx == (bfd_size_type) -1)
 			return false;
-		      auxp->x_file.x_n.x_offset = STRING_SIZE_SIZE + indx;
+		      auxp->x_file.x_n.x_n.x_offset = STRING_SIZE_SIZE + indx;
 		    }
 		}
 	      else if ((isymp->n_sclass != C_STAT || isymp->n_type != T_NULL)
@@ -2607,9 +2563,9 @@ _bfd_coff_write_global_sym (struct bfd_hash_entry *bh, void *data)
 	  {
 	    if (! h->root.linker_def)
 	      _bfd_error_handler
-	        (_("%pB: stripping non-representable symbol '%s' (value "
-                  "%" BFD_VMA_FMT "x)"),
-	         output_bfd, h->root.root.string, isym.n_value);
+		(_("%pB: stripping non-representable symbol '%s' "
+		   "(value 0x%" PRIx64 ")"),
+		 output_bfd, h->root.root.string, isym.n_value);
 	    return true;
 	  }
 #endif
@@ -3005,8 +2961,10 @@ _bfd_coff_generic_relocate_section (bfd *output_bfd,
 	      sec = sections[symndx];
 
 	      /* PR 19623: Relocations against symbols in
-		 the absolute sections should ignored.  */
-	      if (bfd_is_abs_section (sec))
+		 the absolute sections should ignored.
+		 PR 29807: Also ignore relocs against file symbols or
+		 other such nonsense in fuzzed objects.  */
+	      if (sec == NULL || bfd_is_abs_section (sec))
 		continue;
 
 	      val = (sec->output_section->vma

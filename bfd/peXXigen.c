@@ -1,5 +1,5 @@
 /* Support for the generic parts of PE/PEI; the common executable parts.
-   Copyright (C) 1995-2021 Free Software Foundation, Inc.
+   Copyright (C) 1995-2022 Free Software Foundation, Inc.
    Written by Cygnus Solutions.
 
    This file is part of BFD, the Binary File Descriptor library.
@@ -60,8 +60,9 @@
    on this code has a chance of getting something accomplished without
    wasting too much time.  */
 
-/* This expands into COFF_WITH_pe, COFF_WITH_pep, or COFF_WITH_pex64
-   depending on whether we're compiling for straight PE or PE+.  */
+/* This expands into COFF_WITH_pe, COFF_WITH_pep, COFF_WITH_pex64,
+   COFF_WITH_peAArch64 or COFF_WITH_peLoongArch64 depending on whether we're
+   compiling for straight PE or PE+.  */
 #define COFF_WITH_XX
 
 #include "sysdep.h"
@@ -83,6 +84,10 @@
 # include "coff/x86_64.h"
 #elif defined COFF_WITH_pep
 # include "coff/ia64.h"
+#elif defined COFF_WITH_peAArch64
+# include "coff/aarch64.h"
+#elif defined COFF_WITH_peLoongArch64
+# include "coff/loongarch64.h"
 #else
 # include "coff/i386.h"
 #endif
@@ -92,7 +97,7 @@
 #include "libpei.h"
 #include "safe-ctype.h"
 
-#if defined COFF_WITH_pep || defined COFF_WITH_pex64
+#if defined COFF_WITH_pep || defined COFF_WITH_pex64 || defined COFF_WITH_peAArch64 || defined COFF_WITH_peLoongArch64
 # undef AOUTSZ
 # define AOUTSZ		PEPAOUTSZ
 # define PEAOUTHDR	PEPAOUTHDR
@@ -298,11 +303,11 @@ _bfd_XXi_swap_aux_in (bfd *	abfd,
     case C_FILE:
       if (ext->x_file.x_fname[0] == 0)
 	{
-	  in->x_file.x_n.x_zeroes = 0;
-	  in->x_file.x_n.x_offset = H_GET_32 (abfd, ext->x_file.x_n.x_offset);
+	  in->x_file.x_n.x_n.x_zeroes = 0;
+	  in->x_file.x_n.x_n.x_offset = H_GET_32 (abfd, ext->x_file.x_n.x_offset);
 	}
       else
-	memcpy (in->x_file.x_fname, ext->x_file.x_fname, FILNMLEN);
+	memcpy (in->x_file.x_n.x_fname, ext->x_file.x_fname, FILNMLEN);
       return;
 
     case C_STAT:
@@ -370,13 +375,13 @@ _bfd_XXi_swap_aux_out (bfd *  abfd,
   switch (in_class)
     {
     case C_FILE:
-      if (in->x_file.x_fname[0] == 0)
+      if (in->x_file.x_n.x_fname[0] == 0)
 	{
 	  H_PUT_32 (abfd, 0, ext->x_file.x_n.x_zeroes);
-	  H_PUT_32 (abfd, in->x_file.x_n.x_offset, ext->x_file.x_n.x_offset);
+	  H_PUT_32 (abfd, in->x_file.x_n.x_n.x_offset, ext->x_file.x_n.x_offset);
 	}
       else
-	memcpy (ext->x_file.x_fname, in->x_file.x_fname, sizeof (ext->x_file.x_fname));
+	memcpy (ext->x_file.x_fname, in->x_file.x_n.x_fname, sizeof (ext->x_file.x_fname));
 
       return AUXESZ;
 
@@ -469,7 +474,7 @@ _bfd_XXi_swap_aouthdr_in (bfd * abfd,
   aouthdr_int->text_start =
     GET_AOUTHDR_TEXT_START (abfd, aouthdr_ext->text_start);
 
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
   /* PE32+ does not have data_start member!  */
   aouthdr_int->data_start =
     GET_AOUTHDR_DATA_START (abfd, aouthdr_ext->data_start);
@@ -512,50 +517,31 @@ _bfd_XXi_swap_aouthdr_in (bfd * abfd,
   a->LoaderFlags = H_GET_32 (abfd, src->LoaderFlags);
   a->NumberOfRvaAndSizes = H_GET_32 (abfd, src->NumberOfRvaAndSizes);
 
-  {
-    unsigned idx;
+  /* PR 17512: Don't blindly trust NumberOfRvaAndSizes.  */
+  unsigned idx;
+  for (idx = 0;
+       idx < a->NumberOfRvaAndSizes && idx < IMAGE_NUMBEROF_DIRECTORY_ENTRIES;
+       idx++)
+    {
+      /* If data directory is empty, rva also should be 0.  */
+      int size = H_GET_32 (abfd, src->DataDirectory[idx][1]);
+      int vma = size ? H_GET_32 (abfd, src->DataDirectory[idx][0]) : 0;
 
-    /* PR 17512: Corrupt PE binaries can cause seg-faults.  */
-    if (a->NumberOfRvaAndSizes > IMAGE_NUMBEROF_DIRECTORY_ENTRIES)
-      {
-	/* xgettext:c-format */
-	_bfd_error_handler
-	  (_("%pB: aout header specifies an invalid number of"
-	     " data-directory entries: %u"), abfd, a->NumberOfRvaAndSizes);
-	bfd_set_error (bfd_error_bad_value);
+      a->DataDirectory[idx].Size = size;
+      a->DataDirectory[idx].VirtualAddress = vma;
+    }
 
-	/* Paranoia: If the number is corrupt, then assume that the
-	   actual entries themselves might be corrupt as well.  */
-	a->NumberOfRvaAndSizes = 0;
-      }
-
-    for (idx = 0; idx < a->NumberOfRvaAndSizes; idx++)
-      {
-	/* If data directory is empty, rva also should be 0.  */
-	int size =
-	  H_GET_32 (abfd, src->DataDirectory[idx][1]);
-
-	a->DataDirectory[idx].Size = size;
-
-	if (size)
-	  a->DataDirectory[idx].VirtualAddress =
-	    H_GET_32 (abfd, src->DataDirectory[idx][0]);
-	else
-	  a->DataDirectory[idx].VirtualAddress = 0;
-      }
-
-    while (idx < IMAGE_NUMBEROF_DIRECTORY_ENTRIES)
-      {
-	a->DataDirectory[idx].Size = 0;
-	a->DataDirectory[idx].VirtualAddress = 0;
-	idx ++;
-      }
-  }
+  while (idx < IMAGE_NUMBEROF_DIRECTORY_ENTRIES)
+    {
+      a->DataDirectory[idx].Size = 0;
+      a->DataDirectory[idx].VirtualAddress = 0;
+      idx++;
+    }
 
   if (aouthdr_int->entry)
     {
       aouthdr_int->entry += a->ImageBase;
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
       aouthdr_int->entry &= 0xffffffff;
 #endif
     }
@@ -563,12 +549,12 @@ _bfd_XXi_swap_aouthdr_in (bfd * abfd,
   if (aouthdr_int->tsize)
     {
       aouthdr_int->text_start += a->ImageBase;
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
       aouthdr_int->text_start &= 0xffffffff;
 #endif
     }
 
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
   /* PE32+ does not have data_start member!  */
   if (aouthdr_int->dsize)
     {
@@ -628,7 +614,7 @@ _bfd_XXi_swap_aouthdr_out (bfd * abfd, void * in, void * out)
   if (aouthdr_in->tsize)
     {
       aouthdr_in->text_start -= ib;
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
       aouthdr_in->text_start &= 0xffffffff;
 #endif
     }
@@ -636,7 +622,7 @@ _bfd_XXi_swap_aouthdr_out (bfd * abfd, void * in, void * out)
   if (aouthdr_in->dsize)
     {
       aouthdr_in->data_start -= ib;
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
       aouthdr_in->data_start &= 0xffffffff;
 #endif
     }
@@ -644,7 +630,7 @@ _bfd_XXi_swap_aouthdr_out (bfd * abfd, void * in, void * out)
   if (aouthdr_in->entry)
     {
       aouthdr_in->entry -= ib;
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
       aouthdr_in->entry &= 0xffffffff;
 #endif
     }
@@ -733,13 +719,23 @@ _bfd_XXi_swap_aouthdr_out (bfd * abfd, void * in, void * out)
 
   H_PUT_16 (abfd, aouthdr_in->magic, aouthdr_out->standard.magic);
 
+  if (extra->MajorLinkerVersion || extra->MinorLinkerVersion)
+    {
+      H_PUT_8 (abfd, extra->MajorLinkerVersion,
+	       aouthdr_out->standard.vstamp);
+      H_PUT_8 (abfd, extra->MinorLinkerVersion,
+	       aouthdr_out->standard.vstamp + 1);
+    }
+  else
+    {
 /* e.g. 219510000 is linker version 2.19  */
 #define LINKER_VERSION ((short) (BFD_VERSION / 1000000))
 
-  /* This piece of magic sets the "linker version" field to
-     LINKER_VERSION.  */
-  H_PUT_16 (abfd, (LINKER_VERSION / 100 + (LINKER_VERSION % 100) * 256),
-	    aouthdr_out->standard.vstamp);
+      /* This piece of magic sets the "linker version" field to
+	 LINKER_VERSION.  */
+      H_PUT_16 (abfd, (LINKER_VERSION / 100 + (LINKER_VERSION % 100) * 256),
+		aouthdr_out->standard.vstamp);
+    }
 
   PUT_AOUTHDR_TSIZE (abfd, aouthdr_in->tsize, aouthdr_out->standard.tsize);
   PUT_AOUTHDR_DSIZE (abfd, aouthdr_in->dsize, aouthdr_out->standard.dsize);
@@ -748,7 +744,7 @@ _bfd_XXi_swap_aouthdr_out (bfd * abfd, void * in, void * out)
   PUT_AOUTHDR_TEXT_START (abfd, aouthdr_in->text_start,
 			  aouthdr_out->standard.text_start);
 
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
   /* PE32+ does not have data_start member!  */
   PUT_AOUTHDR_DATA_START (abfd, aouthdr_in->data_start,
 			  aouthdr_out->standard.data_start);
@@ -933,9 +929,14 @@ _bfd_XXi_swap_scnhdr_out (bfd * abfd, void * in, void * out)
   if (scnhdr_int->s_vaddr < pe_data (abfd)->pe_opthdr.ImageBase)
     _bfd_error_handler (_("%pB:%.8s: section below image base"),
                         abfd, scnhdr_int->s_name);
+  /* Do not compare lower 32-bits for 64-bit vma.  */
+#if !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
   else if(ss != (ss & 0xffffffff))
     _bfd_error_handler (_("%pB:%.8s: RVA truncated"), abfd, scnhdr_int->s_name);
   PUT_SCNHDR_VADDR (abfd, ss & 0xffffffff, scnhdr_ext->s_vaddr);
+#else
+  PUT_SCNHDR_VADDR (abfd, ss, scnhdr_ext->s_vaddr);
+#endif
 
   /* NT wants the size data to be rounded up to the next
      NT_FILE_ALIGNMENT, but zero if it has no content (as in .bss,
@@ -1121,7 +1122,8 @@ _bfd_XXi_swap_debugdir_out (bfd * abfd, void * inp, void * extp)
 }
 
 CODEVIEW_INFO *
-_bfd_XXi_slurp_codeview_record (bfd * abfd, file_ptr where, unsigned long length, CODEVIEW_INFO *cvinfo)
+_bfd_XXi_slurp_codeview_record (bfd * abfd, file_ptr where, unsigned long length, CODEVIEW_INFO *cvinfo,
+				char **pdb)
 {
   char buffer[256+1];
   bfd_size_type nread;
@@ -1161,6 +1163,9 @@ _bfd_XXi_slurp_codeview_record (bfd * abfd, file_ptr where, unsigned long length
       cvinfo->SignatureLength = CV_INFO_SIGNATURE_LENGTH;
       /* cvinfo->PdbFileName = cvinfo70->PdbFileName;  */
 
+      if (pdb)
+	*pdb = xstrdup (cvinfo70->PdbFileName);
+
       return cvinfo;
     }
   else if ((cvinfo->CVSignature == CVINFO_PDB20_CVSIGNATURE)
@@ -1172,6 +1177,9 @@ _bfd_XXi_slurp_codeview_record (bfd * abfd, file_ptr where, unsigned long length
       cvinfo->SignatureLength = 4;
       /* cvinfo->PdbFileName = cvinfo20->PdbFileName;  */
 
+      if (pdb)
+	*pdb = xstrdup (cvinfo20->PdbFileName);
+
       return cvinfo;
     }
 
@@ -1179,9 +1187,11 @@ _bfd_XXi_slurp_codeview_record (bfd * abfd, file_ptr where, unsigned long length
 }
 
 unsigned int
-_bfd_XXi_write_codeview_record (bfd * abfd, file_ptr where, CODEVIEW_INFO *cvinfo)
+_bfd_XXi_write_codeview_record (bfd * abfd, file_ptr where, CODEVIEW_INFO *cvinfo,
+				const char *pdb)
 {
-  const bfd_size_type size = sizeof (CV_INFO_PDB70) + 1;
+  size_t pdb_len = pdb ? strlen (pdb) : 0;
+  const bfd_size_type size = sizeof (CV_INFO_PDB70) + pdb_len + 1;
   bfd_size_type written;
   CV_INFO_PDB70 *cvinfo70;
   char * buffer;
@@ -1204,7 +1214,11 @@ _bfd_XXi_write_codeview_record (bfd * abfd, file_ptr where, CODEVIEW_INFO *cvinf
   memcpy (&(cvinfo70->Signature[8]), &(cvinfo->Signature[8]), 8);
 
   H_PUT_32 (abfd, cvinfo->Age, cvinfo70->Age);
-  cvinfo70->PdbFileName[0] = '\0';
+
+  if (pdb == NULL)
+    cvinfo70->PdbFileName[0] = '\0';
+  else
+    memcpy (cvinfo70->PdbFileName, pdb, pdb_len + 1);
 
   written = bfd_bwrite (buffer, size, abfd);
 
@@ -1800,7 +1814,7 @@ pe_print_edata (bfd * abfd, void * vfile)
 static bool
 pe_print_pdata (bfd * abfd, void * vfile)
 {
-#if defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
 # define PDATA_ROW_SIZE	(3 * 8)
 #else
 # define PDATA_ROW_SIZE	(5 * 4)
@@ -1827,7 +1841,7 @@ pe_print_pdata (bfd * abfd, void * vfile)
 
   fprintf (file,
 	   _("\nThe Function Table (interpreted .pdata section contents)\n"));
-#if defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
   fprintf (file,
 	   _(" vma:\t\t\tBegin Address    End Address      Unwind Info\n"));
 #else
@@ -1864,7 +1878,7 @@ pe_print_pdata (bfd * abfd, void * vfile)
       bfd_vma eh_handler;
       bfd_vma eh_data;
       bfd_vma prolog_end_addr;
-#if !defined(COFF_WITH_pep) || defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) || defined(COFF_WITH_pex64) || defined(COFF_WITH_peAArch64) || defined(COFF_WITH_peLoongArch64)
       int em_data;
 #endif
 
@@ -1882,7 +1896,7 @@ pe_print_pdata (bfd * abfd, void * vfile)
 	/* We are probably into the padding of the section now.  */
 	break;
 
-#if !defined(COFF_WITH_pep) || defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) || defined(COFF_WITH_pex64) || defined(COFF_WITH_peAArch64) || defined(COFF_WITH_peLoongArch64)
       em_data = ((eh_handler & 0x1) << 2) | (prolog_end_addr & 0x3);
 #endif
       eh_handler &= ~(bfd_vma) 0x3;
@@ -1893,7 +1907,7 @@ pe_print_pdata (bfd * abfd, void * vfile)
       bfd_fprintf_vma (abfd, file, begin_addr); fputc (' ', file);
       bfd_fprintf_vma (abfd, file, end_addr); fputc (' ', file);
       bfd_fprintf_vma (abfd, file, eh_handler);
-#if !defined(COFF_WITH_pep) || defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) || defined(COFF_WITH_pex64) || defined(COFF_WITH_peAArch64) || defined(COFF_WITH_peLoongArch64)
       fputc (' ', file);
       bfd_fprintf_vma (abfd, file, eh_data); fputc (' ', file);
       bfd_fprintf_vma (abfd, file, prolog_end_addr);
@@ -2012,6 +2026,8 @@ _bfd_XX_print_ce_compressed_pdata (bfd * abfd, void * vfile)
     }
 
   start = 0;
+  if (stop > datasize)
+    stop = datasize;
 
   for (i = start; i < stop; i += onaline)
     {
@@ -2602,22 +2618,25 @@ pe_print_debugdata (bfd * abfd, void * vfile)
 	     We need to use a 32-bit aligned buffer
 	     to safely read in a codeview record.  */
 	  char buffer[256 + 1] ATTRIBUTE_ALIGNED_ALIGNOF (CODEVIEW_INFO);
+	  char *pdb;
 
 	  CODEVIEW_INFO *cvinfo = (CODEVIEW_INFO *) buffer;
 
 	  /* The debug entry doesn't have to have to be in a section,
 	     in which case AddressOfRawData is 0, so always use PointerToRawData.  */
 	  if (!_bfd_XXi_slurp_codeview_record (abfd, (file_ptr) idd.PointerToRawData,
-					       idd.SizeOfData, cvinfo))
+					       idd.SizeOfData, cvinfo, &pdb))
 	    continue;
 
 	  for (j = 0; j < cvinfo->SignatureLength; j++)
 	    sprintf (&signature[j*2], "%02x", cvinfo->Signature[j] & 0xff);
 
 	  /* xgettext:c-format */
-	  fprintf (file, _("(format %c%c%c%c signature %s age %ld)\n"),
+	  fprintf (file, _("(format %c%c%c%c signature %s age %ld pdb %s)\n"),
 		   buffer[0], buffer[1], buffer[2], buffer[3],
-		   signature, cvinfo->Age);
+		   signature, cvinfo->Age, pdb[0] ? pdb : "(none)");
+
+	  free (pdb);
 	}
     }
 
@@ -2784,7 +2803,7 @@ _bfd_XX_print_private_bfd_data_common (bfd * abfd, void * vfile)
   bfd_fprintf_vma (abfd, file, i->AddressOfEntryPoint);
   fprintf (file, "\nBaseOfCode\t\t");
   bfd_fprintf_vma (abfd, file, i->BaseOfCode);
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
   /* PE32+ does not have BaseOfData member!  */
   fprintf (file, "\nBaseOfData\t\t");
   bfd_fprintf_vma (abfd, file, i->BaseOfData);
@@ -2934,6 +2953,7 @@ bool
 _bfd_XX_bfd_copy_private_bfd_data_common (bfd * ibfd, bfd * obfd)
 {
   pe_data_type *ipe, *ope;
+  bfd_size_type size;
 
   /* One day we may try to grok other private data.  */
   if (ibfd->xvec->flavour != bfd_target_coff_flavour
@@ -2968,7 +2988,8 @@ _bfd_XX_bfd_copy_private_bfd_data_common (bfd * ibfd, bfd * obfd)
   memcpy (ope->dos_message, ipe->dos_message, sizeof (ope->dos_message));
 
   /* The file offsets contained in the debug directory need rewriting.  */
-  if (ope->pe_opthdr.DataDirectory[PE_DEBUG_DATA].Size != 0)
+  size = ope->pe_opthdr.DataDirectory[PE_DEBUG_DATA].Size;
+  if (size != 0)
     {
       bfd_vma addr = ope->pe_opthdr.DataDirectory[PE_DEBUG_DATA].VirtualAddress
 	+ ope->pe_opthdr.ImageBase;
@@ -2977,62 +2998,74 @@ _bfd_XX_bfd_copy_private_bfd_data_common (bfd * ibfd, bfd * obfd)
 	 representing s_size, not virt_size).  Therefore don't look for the
 	 section containing the first byte, but for that covering the last
 	 one.  */
-      bfd_vma last = addr + ope->pe_opthdr.DataDirectory[PE_DEBUG_DATA].Size - 1;
+      bfd_vma last = addr + size - 1;
       asection *section = find_section_by_vma (obfd, last);
-      bfd_byte *data;
 
-      /* PR 17512: file: 0f15796a.  */
-      if (section && addr < section->vma)
+      if (section != NULL)
 	{
-	  /* xgettext:c-format */
-	  _bfd_error_handler
-	    (_("%pB: Data Directory (%lx bytes at %" PRIx64 ") "
-	       "extends across section boundary at %" PRIx64),
-	     obfd, ope->pe_opthdr.DataDirectory[PE_DEBUG_DATA].Size,
-	     (uint64_t) addr, (uint64_t) section->vma);
-	  return false;
-	}
+	  bfd_byte *data;
+	  bfd_vma dataoff = addr - section->vma;
 
-      if (section && bfd_malloc_and_get_section (obfd, section, &data))
-	{
-	  unsigned int i;
-	  struct external_IMAGE_DEBUG_DIRECTORY *dd =
-	    (struct external_IMAGE_DEBUG_DIRECTORY *)(data + (addr - section->vma));
-
-	  for (i = 0; i < ope->pe_opthdr.DataDirectory[PE_DEBUG_DATA].Size
-		 / sizeof (struct external_IMAGE_DEBUG_DIRECTORY); i++)
+	  /* PR 17512: file: 0f15796a.  */
+	  if (addr < section->vma
+	      || section->size < dataoff
+	      || section->size - dataoff < size)
 	    {
-	      asection *ddsection;
-	      struct external_IMAGE_DEBUG_DIRECTORY *edd = &(dd[i]);
-	      struct internal_IMAGE_DEBUG_DIRECTORY idd;
-
-	      _bfd_XXi_swap_debugdir_in (obfd, edd, &idd);
-
-	      if (idd.AddressOfRawData == 0)
-		continue; /* RVA 0 means only offset is valid, not handled yet.  */
-
-	      ddsection = find_section_by_vma (obfd, idd.AddressOfRawData + ope->pe_opthdr.ImageBase);
-	      if (!ddsection)
-		continue; /* Not in a section! */
-
-	      idd.PointerToRawData = ddsection->filepos + (idd.AddressOfRawData
-							   + ope->pe_opthdr.ImageBase) - ddsection->vma;
-
-	      _bfd_XXi_swap_debugdir_out (obfd, &idd, edd);
-	    }
-
-	  if (!bfd_set_section_contents (obfd, section, data, 0, section->size))
-	    {
-	      _bfd_error_handler (_("failed to update file offsets in debug directory"));
-	      free (data);
+	      /* xgettext:c-format */
+	      _bfd_error_handler
+		(_("%pB: Data Directory (%lx bytes at %" PRIx64 ") "
+		   "extends across section boundary at %" PRIx64),
+		 obfd, ope->pe_opthdr.DataDirectory[PE_DEBUG_DATA].Size,
+		 (uint64_t) addr, (uint64_t) section->vma);
 	      return false;
 	    }
-	  free (data);
-	}
-      else if (section)
-	{
-	  _bfd_error_handler (_("%pB: failed to read debug data section"), obfd);
-	  return false;
+
+	  if (bfd_malloc_and_get_section (obfd, section, &data))
+	    {
+	      unsigned int i;
+	      struct external_IMAGE_DEBUG_DIRECTORY *dd =
+		(struct external_IMAGE_DEBUG_DIRECTORY *)(data + dataoff);
+
+	      for (i = 0; i < ope->pe_opthdr.DataDirectory[PE_DEBUG_DATA].Size
+		     / sizeof (struct external_IMAGE_DEBUG_DIRECTORY); i++)
+		{
+		  asection *ddsection;
+		  struct external_IMAGE_DEBUG_DIRECTORY *edd = &(dd[i]);
+		  struct internal_IMAGE_DEBUG_DIRECTORY idd;
+		  bfd_vma idd_vma;
+
+		  _bfd_XXi_swap_debugdir_in (obfd, edd, &idd);
+
+		  /* RVA 0 means only offset is valid, not handled yet.  */
+		  if (idd.AddressOfRawData == 0)
+		    continue;
+
+		  idd_vma = idd.AddressOfRawData + ope->pe_opthdr.ImageBase;
+		  ddsection = find_section_by_vma (obfd, idd_vma);
+		  if (!ddsection)
+		    continue; /* Not in a section! */
+
+		  idd.PointerToRawData
+		    = ddsection->filepos + idd_vma - ddsection->vma;
+		  _bfd_XXi_swap_debugdir_out (obfd, &idd, edd);
+		}
+
+	      if (!bfd_set_section_contents (obfd, section, data, 0,
+					     section->size))
+		{
+		  _bfd_error_handler (_("failed to update file offsets"
+					" in debug directory"));
+		  free (data);
+		  return false;
+		}
+	      free (data);
+	    }
+	  else
+	    {
+	      _bfd_error_handler (_("%pB: failed to read "
+				    "debug data section"), obfd);
+	      return false;
+	    }
 	}
     }
 
@@ -3085,7 +3118,7 @@ _bfd_XX_get_symbol_info (bfd * abfd, asymbol *symbol, symbol_info *ret)
   coff_get_symbol_info (abfd, symbol, ret);
 }
 
-#if !defined(COFF_WITH_pep) && defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && (defined(COFF_WITH_pex64) || defined(COFF_WITH_peAArch64) || defined(COFF_WITH_peLoongArch64))
 static int
 sort_x64_pdata (const void *l, const void *r)
 {
@@ -4504,7 +4537,7 @@ _bfd_XXi_final_link_postscript (bfd * abfd, struct coff_final_link_info *pfinfo)
 	the TLS data directory consists of 4 pointers, followed
 	by two 4-byte integer. This implies that the total size
 	is different for 32-bit and 64-bit executables.  */
-#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && !defined(COFF_WITH_pex64) && !defined(COFF_WITH_peAArch64) && !defined(COFF_WITH_peLoongArch64)
       pe_data (abfd)->pe_opthdr.DataDirectory[PE_TLS_TABLE].Size = 0x18;
 #else
       pe_data (abfd)->pe_opthdr.DataDirectory[PE_TLS_TABLE].Size = 0x28;
@@ -4513,7 +4546,7 @@ _bfd_XXi_final_link_postscript (bfd * abfd, struct coff_final_link_info *pfinfo)
 
 /* If there is a .pdata section and we have linked pdata finally, we
      need to sort the entries ascending.  */
-#if !defined(COFF_WITH_pep) && defined(COFF_WITH_pex64)
+#if !defined(COFF_WITH_pep) && (defined(COFF_WITH_pex64) || defined(COFF_WITH_peAArch64) || defined(COFF_WITH_peLoongArch64))
   {
     asection *sec = bfd_get_section_by_name (abfd, ".pdata");
 
