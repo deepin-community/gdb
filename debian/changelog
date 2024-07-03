@@ -1,3 +1,9 @@
+gdb (13.2-1deepin1) unstable; urgency=medium
+
+  * No source change upload against python 3.12.
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Wed, 03 Jul 2024 05:28:45 +0200
+
 gdb (13.2-1) unstable; urgency=medium
 
   * New upstream release.
