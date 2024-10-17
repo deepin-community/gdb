@@ -2,7 +2,6 @@
 Package: gdb-minimal
 Architecture: any
 Depends: ${misc:Depends}, ${shlibs:Depends}
-Provides: gdb
 Conflicts: gdb
 Replaces: gdb
 Description: GNU Debugger (minimal version)

@@ -6,7 +6,7 @@ Index: gdb/gdb/printcmd.c
 ===================================================================
 --- gdb.orig/gdb/printcmd.c
 +++ gdb/gdb/printcmd.c
-@@ -1877,7 +1877,7 @@ x_command (const char *exp, int from_tty
+@@ -1837,7 +1837,7 @@ x_command (const char *exp, int from_tty
      {
        /* '*((int *(*) (void)) __errno_location) ()' is incompatible with
           function descriptors.  */

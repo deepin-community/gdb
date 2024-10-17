@@ -1,0 +1,22 @@
+Author: Héctor Orón Martínez <zumbi@debian.org>
+Origin: Debian
+Forwarded: not-needed
+Last-Update: 2024-07-27
+
+Index: gdb/gdb/doc/Makefile.in
+===================================================================
+--- gdb.orig/gdb/doc/Makefile.in
++++ gdb/gdb/doc/Makefile.in
+@@ -184,8 +184,10 @@ POD2MAN5 = pod2man --center="GNU Develop
+ 		   --release="gdb-`sed q version.subst`" --section=5
+ 
+ # List of man pages generated from gdb.texi
+-MAN1S = gdb.1 gdbserver.1 gcore.1 gdb-add-index.1
+-MAN5S = gdbinit.5
++# MAN1S = gdb.1 gdbserver.1 gcore.1 gdb-add-index.1
++# MAN5S = gdbinit.5
++MAN1S = 
++MAN5S = 
+ MANS = $(MAN1S) $(MAN5S)
+ 
+ # The pod files that are generated as a side effect of creating the

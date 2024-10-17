@@ -9,9 +9,16 @@ SOURCE_DATE_EPOCH ?= $(shell dpkg-parsechangelog -SDate | date -f- +%s)
 deb_version := $(shell dpkg-parsechangelog | awk '/^Version:/ {print $$2}')
 
 # The top-level configure script fails to pass these down properly ...
+DPKG_EXPORT_BUILDFLAGS = 1
+include /usr/share/dpkg/buildflags.mk
 export CPPFLAGS
 export LDFLAGS
 CPPFLAGS += -fPIC
+
+# Ensure texlive respects SOURCE_DATE_EPOCH
+export FORCE_SOURCE_DATE=1
+# Also force "TeX output" string in dvi file, thus %DVIPSSource in the ps file
+FAKETIME = TZ=UTC faketime "$(shell TZ=UTC date +"%Y-%m-%d %T" --date=@$(SOURCE_DATE_EPOCH))"
 
 install = /usr/bin/install -p
 
@@ -155,7 +162,6 @@ default_configure_args = \
 	--with-lzma \
 	--with-python=python3 \
 	--with-xxhash \
-	--with-mpfr \
 
 # multiarch targets; this is taken from the binutils-multiarch package but
 # doesn't seem like a terribly nice list; see
@@ -176,6 +182,7 @@ MULTIARCH_TARGETS := \
 	mipsel-linux-gnu \
 	mips64-linux-gnu \
 	mips64el-linux-gnu \
+	or1k-linux-gnu \
 	powerpc-linux-gnu \
 	powerpc-linux-gnuspe \
 	powerpc64le-linux-gnu \
@@ -190,7 +197,7 @@ MULTIARCH_TARGETS := \
 	sparc64-linux-gnu \
 	x86_64-linux-gnu \
 	x86_64-linux-gnux32 \
-	m32r-linux-gnu
+	# EOL
 
 # broken, see https://launchpad.net/bugs/1233185
 #MULTIARCH_TARGETS := all
@@ -210,8 +217,7 @@ minimal_configure_args = \
 	--disable-tui \
 	--without-python \
 	--without-babeltrace \
-	--disable-source-highlight \
-	--without-mpfr \
+	--disable-source-highlight
 
 # ---------- configure and build targets ----------
 
@@ -236,7 +242,7 @@ stamps/build-%: stamps/configure-%
 	    $(MAKE) -C $(builddir_default) info))
 	$(if $(filter yes, $(nodoc_profile)),, \
 	  $(if $(filter default, $*), \
-	    $(MAKE) -C $(builddir_$*)/gdb/doc refcard.dvi refcard.ps))
+	    $(FAKETIME) $(MAKE) -C $(builddir_$*)/gdb/doc refcard.dvi refcard.ps))
 	touch $@
 
 stamps/check: stamps/build-default
