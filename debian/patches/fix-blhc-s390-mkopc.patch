@@ -1,0 +1,63 @@
+Index: gdb/opcodes/Makefile.am
+===================================================================
+--- gdb.orig/opcodes/Makefile.am
++++ gdb/opcodes/Makefile.am
+@@ -31,9 +31,9 @@ NO_WERROR = @NO_WERROR@
+ AM_CFLAGS = $(WARN_CFLAGS)
+ 
+ COMPILE_FOR_BUILD = $(CC_FOR_BUILD) $(INCLUDES) $(AM_CPPFLAGS) \
+-	$(CFLAGS_FOR_BUILD)
+-LINK_FOR_BUILD = $(CC_FOR_BUILD) $(CFLAGS_FOR_BUILD) \
+-	$(LDFLAGS_FOR_BUILD) -o $@
++	$(CFLAGS) $(CPPFLAGS)
++LINK_FOR_BUILD = $(CC_FOR_BUILD) $(CFLAGS) \
++	$(LDFLAGS) -o $@
+ 
+ libopcodes_la_LDFLAGS =
+ if INSTALL_LIBBFD
+@@ -570,8 +570,11 @@ opc2c$(EXEEXT_FOR_BUILD): opc2c.o $(BUIL
+ opc2c.o: opc2c.c $(INCDIR)/libiberty.h
+ 	$(AM_V_CC)$(COMPILE_FOR_BUILD) -c $(srcdir)/opc2c.c
+ 
+-s390-mkopc$(EXEEXT_FOR_BUILD): s390-mkopc.c
+-	$(AM_V_CCLD)$(COMPILE_FOR_BUILD) -o s390-mkopc $(srcdir)/s390-mkopc.c
++s390-mkopc$(EXEEXT_FOR_BUILD): s390-mkopc.o $(BUILD_LIBS_DEPS)
++	$(AM_V_CCLD)$(LINK_FOR_BUILD)  s390-mkopc.o $(BUILD_LIBS)
++
++s390-mkopc.o: s390-mkopc.c
++	$(AM_V_CC)$(COMPILE_FOR_BUILD) -c $(srcdir)/s390-mkopc.c
+ 
+ s390-opc.tab: s390-mkopc$(EXEEXT_FOR_BUILD) s390-opc.txt
+ 	$(AM_V_GEN)./s390-mkopc$(EXEEXT_FOR_BUILD) < $(srcdir)/s390-opc.txt > s390-opc.tab
+Index: gdb/opcodes/Makefile.in
+===================================================================
+--- gdb.orig/opcodes/Makefile.in
++++ gdb/opcodes/Makefile.in
+@@ -432,10 +432,10 @@ INCDIR = $(srcdir)/../include
+ BFDDIR = $(srcdir)/../bfd
+ AM_CFLAGS = $(WARN_CFLAGS)
+ COMPILE_FOR_BUILD = $(CC_FOR_BUILD) $(INCLUDES) $(AM_CPPFLAGS) \
+-	$(CFLAGS_FOR_BUILD)
++	$(CFLAGS) $(CPPFLAGS)
+ 
+-LINK_FOR_BUILD = $(CC_FOR_BUILD) $(CFLAGS_FOR_BUILD) \
+-	$(LDFLAGS_FOR_BUILD) -o $@
++LINK_FOR_BUILD = $(CC_FOR_BUILD) $(CFLAGS) \
++	$(LDFLAGS) -o $@
+ 
+ libopcodes_la_LDFLAGS = $(am__append_1) -release `cat \
+ 	../bfd/libtool-soversion` @SHARED_LDFLAGS@
+@@ -1537,8 +1537,11 @@ opc2c$(EXEEXT_FOR_BUILD): opc2c.o $(BUIL
+ opc2c.o: opc2c.c $(INCDIR)/libiberty.h
+ 	$(AM_V_CC)$(COMPILE_FOR_BUILD) -c $(srcdir)/opc2c.c
+ 
+-s390-mkopc$(EXEEXT_FOR_BUILD): s390-mkopc.c
+-	$(AM_V_CCLD)$(COMPILE_FOR_BUILD) -o s390-mkopc $(srcdir)/s390-mkopc.c
++s390-mkopc$(EXEEXT_FOR_BUILD): s390-mkopc.o $(BUILD_LIBS_DEPS)
++	$(AM_V_CCLD)$(LINK_FOR_BUILD)  s390-mkopc.o $(BUILD_LIBS)
++
++s390-mkopc.o: s390-mkopc.c
++	$(AM_V_CC)$(COMPILE_FOR_BUILD) -c $(srcdir)/s390-mkopc.c
+ 
+ s390-opc.tab: s390-mkopc$(EXEEXT_FOR_BUILD) s390-opc.txt
+ 	$(AM_V_GEN)./s390-mkopc$(EXEEXT_FOR_BUILD) < $(srcdir)/s390-opc.txt > s390-opc.tab

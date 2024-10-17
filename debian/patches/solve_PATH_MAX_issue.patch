@@ -18,7 +18,7 @@ Index: gdb/gdb/nto-tdep.c
 ===================================================================
 --- gdb.orig/gdb/nto-tdep.c
 +++ gdb/gdb/nto-tdep.c
-@@ -156,10 +156,12 @@ nto_find_and_open_solib (const char *sol
+@@ -157,10 +157,12 @@ nto_find_and_open_solib (const char *sol
  void
  nto_init_solib_absolute_prefix (void)
  {
@@ -31,8 +31,8 @@ Index: gdb/gdb/nto-tdep.c
 +#define FMT "set solib-absolute-prefix %s"
  
    nto_root = nto_target ();
-   if (strcmp (gdbarch_bfd_arch_info (target_gdbarch ())->arch_name, "i386") == 0)
-@@ -182,9 +184,13 @@ nto_init_solib_absolute_prefix (void)
+   gdbarch *gdbarch = current_inferior ()->arch ();
+@@ -184,9 +186,13 @@ nto_init_solib_absolute_prefix (void)
  	       == BFD_ENDIAN_BIG ? "be" : "le";
      }
  

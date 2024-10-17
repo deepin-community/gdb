@@ -1,0 +1,30 @@
+Index: gdb/bfd/doc/local.mk
+===================================================================
+--- gdb.orig/bfd/doc/local.mk
++++ gdb/bfd/doc/local.mk
+@@ -79,8 +79,8 @@ MKDOC = %D%/chew$(EXEEXT_FOR_BUILD)
+ 
+ $(MKDOC): %D%/chew.stamp ; @true
+ %D%/chew.stamp: $(srcdir)/%D%/chew.c %D%/$(am__dirstamp)
+-	$(AM_V_CCLD)$(CC_FOR_BUILD) -o %D%/chw$$$$$(EXEEXT_FOR_BUILD) $(CFLAGS_FOR_BUILD) \
+-	  $(CPPFLAGS_FOR_BUILD) $(LDFLAGS_FOR_BUILD) \
++	$(AM_V_CCLD)$(CC_FOR_BUILD) -o %D%/chw$$$$$(EXEEXT_FOR_BUILD) $(CFLAGS) \
++	  $(CPPFLAGS) $(LDFLAGS) \
+ 	  -I. -I$(srcdir) -I%D% -I$(srcdir)/../include -I$(srcdir)/../intl -I../intl \
+ 	  $(srcdir)/%D%/chew.c && \
+ 	$(SHELL) $(srcdir)/../move-if-change \
+Index: gdb/bfd/Makefile.in
+===================================================================
+--- gdb.orig/bfd/Makefile.in
++++ gdb/bfd/Makefile.in
+@@ -2496,8 +2496,8 @@ coff-tic54x.lo: coff-tic54x.c
+ 
+ $(MKDOC): doc/chew.stamp ; @true
+ doc/chew.stamp: $(srcdir)/doc/chew.c doc/$(am__dirstamp)
+-	$(AM_V_CCLD)$(CC_FOR_BUILD) -o doc/chw$$$$$(EXEEXT_FOR_BUILD) $(CFLAGS_FOR_BUILD) \
+-	  $(CPPFLAGS_FOR_BUILD) $(LDFLAGS_FOR_BUILD) \
++	$(AM_V_CCLD)$(CC_FOR_BUILD) -o doc/chw$$$$$(EXEEXT_FOR_BUILD) $(CFLAGS) \
++	  $(CPPFLAGS) $(LDFLAGS) \
+ 	  -I. -I$(srcdir) -Idoc -I$(srcdir)/../include -I$(srcdir)/../intl -I../intl \
+ 	  $(srcdir)/doc/chew.c && \
+ 	$(SHELL) $(srcdir)/../move-if-change \
