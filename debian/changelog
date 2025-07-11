@@ -1,3 +1,10 @@
+gdb (16.3-1deepin1) unstable; urgency=medium
+
+  [ Mingcong Bai ]
+  * Enable gdbserver for loong64.
+
+ -- lhdjply <lhdjply@126.com>  Fri, 11 Jul 2025 09:54:02 +0800
+
 gdb (16.3-1) unstable; urgency=medium
 
   * d/u/signing-key.asc: Remove problematic key.
