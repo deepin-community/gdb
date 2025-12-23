@@ -5,8 +5,10 @@ covered by the GNU Free Documentation License).
 
 GDB's documentation is also available online.  Documentation from the
 most recent release branch may be found at:
-  http://sourceware.org/gdb/onlinedocs/gdb.html
+  https://sourceware.org/gdb/current/onlinedocs/
 
 There are also a number of books and tutorials devoted to GDB.  One
 particularly useful guide is Peter Jay Salzman's, at:
-  http://www.dirac.org/linux/gdb/
+  https://www.dirac.org/linux/gdb/
+
+ -- Sergio Durigan Junior <sergiodj@debian.org>, Sun,  7 Sep 2025 22:58:02 -0400

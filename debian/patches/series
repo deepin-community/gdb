@@ -2,4 +2,3 @@ load-versioned-libcc1.patch
 fix-blhc-libiberty.patch
 fix-blhc-chew.patch
 gfdl-dont-build-manpages.patch
-Port-GDB-to-Hurd-x86_64.patch

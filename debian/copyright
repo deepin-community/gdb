@@ -171,20 +171,6 @@ Files: gdb/nat/x86-gcc-cpuid.h
 Copyright: 2005-2023, Free Software Foundation, Inc
 License: GPL-3+ with GCC-Runtime-3.1 exception
 
-Files: sim/arm/armcopro.c
- sim/arm/armdefs.h
- sim/arm/armemu.c
- sim/arm/armemu.h
- sim/arm/armfpe.h
- sim/arm/arminit.c
- sim/arm/armos.c
- sim/arm/armos.h
- sim/arm/armsupp.c
- sim/arm/armvirt.c
- sim/arm/dbg_rdi.h
-Copyright: 1994, 2000 Advanced RISC Machines Ltd
-License: GPL-3+
-
 Files: sim/erc32/erc32.c
  sim/erc32/exec.c
  sim/erc32/func.c
@@ -271,9 +257,8 @@ License: LGPL-2+
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  Library General Public License for more details.
  .
- You should have received a copy of the GNU Library General Public
- License along with this library; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <https://www.gnu.org/licenses/>.
  .
  On Debian systems, the full text of the GNU Library General Public
  License version 2 can be found in the file
@@ -290,9 +275,8 @@ License: LGPL-2.1+
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  Lesser General Public License for more details.
  .
- You should have received a copy of the GNU Lesser General Public
- License along with this library; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <https://www.gnu.org/licenses/>.
  .
  On Debian systems, the full text of the GNU Lesser General Public
  License version 2.1 can be found in the file
@@ -309,9 +293,8 @@ License: GPL-2+
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
  .
- You should have received a copy of the GNU General Public License along
- with this program; if not, write to the Free Software Foundation, Inc.,
- 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ You should have received a copy of the GNU General Public License
+ along with this program.  If not, see <https://www.gnu.org/licenses/>.
  .
  On Debian systems, the full text of the GNU General Public
  License version 2 can be found in the file

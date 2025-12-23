@@ -1,11 +1,11 @@
 #!/usr/bin/make -f
 
-SPACE := $(EMPTY) $(EMPTY)
-COMMA := ,
-
 include /usr/share/dpkg/architecture.mk
 include /usr/share/dpkg/pkg-info.mk
 include /usr/share/dpkg/vendor.mk
+
+SPACE := $(EMPTY) $(EMPTY)
+COMMA = ,
 
 # The top-level configure script fails to pass these down properly ...
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
@@ -17,7 +17,7 @@ CFLAGS += -fPIC
 export $(DPKG_BUILDFLAGS_LIST)
 
 # Ensure texlive respects DEB_TIMESTAMP
-export FORCE_SOURCE_DATE=1
+export FORCE_SOURCE_DATE = 1
 # Also force "TeX output" string in dvi file, thus %DVIPSSource in the ps file
 FAKETIME = TZ=UTC faketime "$(shell TZ=UTC date +"%Y-%m-%d %T" --date=@$(DEB_TIMESTAMP))"
 
@@ -27,40 +27,41 @@ SHELL += -e
 
 export INSTALL = /usr/bin/install -p
 
-derivative   := $(shell if dpkg-vendor --derives-from Ubuntu; then echo Ubuntu; \
-			elif dpkg-vendor --derives-from Debian; then echo Debian; \
-			else echo Unknown; fi)
+derivative = $(shell if dpkg-vendor --derives-from Ubuntu; then echo Ubuntu; \
+		elif dpkg-vendor --derives-from Debian; then echo Debian; \
+		else echo Unknown; fi)
 
 # Support parallel=<n> in DEB_BUILD_OPTIONS (see #209008)
 ifneq (,$(filter parallel=%,$(subst $(COMMA), ,$(DEB_BUILD_OPTIONS))))
   NJOBS := -j $(subst parallel=,,$(filter parallel=%,$(subst $(COMMA), ,$(DEB_BUILD_OPTIONS))))
 endif
 
-ifneq (,$(filter nodoc, $(DEB_BUILD_PROFILES)))
-  nodoc_profile = yes
-endif
+nodoc_profile = $(if $(filter nodoc,$(DEB_BUILD_PROFILES)),no,yes)
 
 # Don't include docs with GFDL invariant sections
-GFDL_INVARIANT_FREE := yes
+GFDL_INVARIANT_FREE = yes
 ifeq ($(derivative),Ubuntu)
-  GFDL_INVARIANT_FREE := no
-  FORCE_CONTROL = FORCE
+  GFDL_INVARIANT_FREE = no
 endif
+
+with_doc = no
 ifneq ($(GFDL_INVARIANT_FREE),yes)
   ifneq ($(nodoc_profile),yes)
-    with_doc := yes
+    with_doc = yes
   endif
 endif
+
+with_multiarch = $(if $(filter pkg.gdb.no-multiarch,$(DEB_BUILD_PROFILES)),no,yes)
 
 # ---------- settings for cross builds ----------
 
 # Cross configuration support.  Check for an environment variable
 # $GDB_TARGET, or a file debian/target.
 ifndef GDB_TARGET
-DEBIAN_TARGET_FILE := $(strip $(shell cat debian/target 2>/dev/null))
-ifneq ($(DEBIAN_TARGET_FILE),)
-GDB_TARGET := $(DEBIAN_TARGET_FILE)
-endif
+  DEBIAN_TARGET_FILE := $(strip $(shell cat debian/target 2>/dev/null))
+  ifneq ($(DEBIAN_TARGET_FILE),)
+    GDB_TARGET := $(DEBIAN_TARGET_FILE)
+  endif
 endif
 
 DEB_TARGET_ALIAS ?= $(DEB_TARGET_GNU_TYPE)
@@ -70,7 +71,7 @@ ifneq ($(GDB_TARGET),)
 endif
 
 ifeq ($(DEB_TARGET_ARCH),)
-$(error GDB_TARGET value "$(GDB_TARGET)" is not a valid Debian architecture)
+  $(error GDB_TARGET value "$(GDB_TARGET)" is not a valid Debian architecture)
 endif
 
 ifdef GDB_TARGET
@@ -81,13 +82,12 @@ ifdef GDB_TARGET
   #     package names (e.g. gcc-powerpc).
   TP = $(DEB_TARGET_ALIAS)-
   TS = -$(DEB_TARGET_ALIAS)
-  FORCE_CONTROL = FORCE
 endif
 
 # ---------- configure options, architecture specific ----------
 
 ifeq ($(DEB_HOST_GNU_CPU),ia64)
-  arch_config_args := --with-libunwind-ia64
+  arch_config_args = --with-libunwind-ia64
 endif
 
 arch_config_args += --with-babeltrace
@@ -98,27 +98,29 @@ ifneq (,$(filter $(DEB_HOST_ARCH),amd64 i386))
 endif
 
 ifdef GDB_TARGET
-  arch_config_args += --program-prefix=$(TP) \
-    --target=$(DEB_TARGET_ALIAS) --with-sysroot=/usr/$(DEB_TARGET_ALIAS)
+  arch_config_args += \
+	--program-prefix=$(TP) \
+	--target=$(DEB_TARGET_ALIAS) \
+	--with-sysroot=/usr/$(DEB_TARGET_ALIAS)
 else
   # To avoid file conflicts, only enable the global gdbinit file for native
   # debuggers.
-  arch_config_args += --with-system-gdbinit=/etc/gdb/gdbinit --with-system-gdbinit-dir=/etc/gdb/gdbinit.d
+  arch_config_args += \
+	--with-system-gdbinit=/etc/gdb/gdbinit \
+	--with-system-gdbinit-dir=/etc/gdb/gdbinit.d
 endif
 
-# ---------- running tests? ----------
-
-run_tests := yes
+run_tests = yes
 ifneq (,$(filter nocheck, $(DEB_BUILD_OPTIONS)))
-  run_tests := disabled by DEB_BUILD_OPTIONS
+  run_tests = disabled by DEB_BUILD_OPTIONS
 endif
 
 ifeq (,$(findstring linux, $(DEB_HOST_GNU_SYSTEM)))
-  run_tests := only enabled for linux targets
+  run_tests = only enabled for Linux targets
 endif
 
 ifdef GDB_TARGET
-  run_tests := disabled for cross builds
+  run_tests = disabled for cross builds
 endif
 
 # List of architectures where tests are flaky (and therefore
@@ -130,7 +132,7 @@ FLAKY_TEST_ARCHITECTURES = \
 	x32
 
 ifneq (,$(filter $(DEB_HOST_ARCH),$(FLAKY_TEST_ARCHITECTURES)))
-  run_tests := disable on $(DEB_HOST_ARCH) due to flakiness
+  run_tests = disable on $(DEB_HOST_ARCH) due to flakiness
 endif
 
 # Architectures where gdbserver's libinproctrace is available.
@@ -186,30 +188,51 @@ multiarch_configure_args = \
 	--enable-obsolete \
 	--disable-sim
 
-# ---------- configure and build targets ----------
-
 builddir_default	= build/default
 builddir_multiarch	= build/multiarch
 builddir_source		= build/gdb
 
-stamps/configure-%:
-	@mkdir -p stamps
-	rm -rf $(builddir_$*)
-	mkdir -p $(builddir_$*)
-	@echo "gdb-$*: configured with: $(subst ___, ,$(foreach i,$($*_configure_args),$(i)\n\t))"
-	cd $(builddir_$*) && CFLAGS="$(CFLAGS)" \
-	  ../../configure $(subst ___,$(SPACE),$($*_configure_args))
-	touch $@
+%:
+	dh $@
 
-stamps/build-%: stamps/configure-%
-	V=1 $(MAKE) -C $(builddir_$*) $(NJOBS)
-	$(if $(filter yes, $(nodoc_profile)),, \
-	  $(if $(filter default, $*), \
-	    $(MAKE) -C $(builddir_default) info))
-	$(if $(filter yes, $(nodoc_profile)),, \
-	  $(if $(filter default, $*), \
-	    $(FAKETIME) $(MAKE) -C $(builddir_$*)/gdb/doc refcard.dvi refcard.ps))
-	touch $@
+# There's no need to run autoreconf as upstream already ships a
+# working configure script.
+override_dh_autoreconf:
+
+# Configure GDB.
+# First and only argument is the build flavour.
+define configure-gdb
+mkdir -p $(builddir_$(1))
+@echo "gdb-$(1): configure with: $(subst ___, ,$(foreach i,$($(1)_configure_args),$(i)\n\t))"
+cd $(builddir_$(1)) && ../../configure $(subst ___,$(SPACE),$($(1)_configure_args))
+endef
+
+override_dh_auto_configure-arch:
+	$(call configure-gdb,default)
+ifeq ($(with_multiarch),yes)
+	$(call configure-gdb,multiarch)
+endif
+
+override_dh_auto_configure-indep:
+
+# Build GDB.
+# First and only argument is the build flavour.
+define build-gdb
+$(MAKE) V=1 -C $(builddir_$(1)) $(NJOBS)
+endef
+
+override_dh_auto_build-arch:
+	$(call build-gdb,default)
+ifeq ($(with_multiarch),yes)
+	$(call build-gdb,multiarch)
+endif
+	$(FAKETIME) $(MAKE) -C $(builddir_default)/gdb/doc refcard.dvi refcard.ps
+ifeq ($(with_doc),yes)
+	$(MAKE) -C $(builddir_default) info
+	$(MAKE) -C $(builddir_default)/gdb/doc pdf html
+endif
+
+override_dh_auto_build-indep:
 
 # GDB's testsuite has historically been flaky and its results haven't
 # been very trustworthy.  Instead of running the entire testsuite (and
@@ -236,29 +259,32 @@ TESTS_NON_FLAKY = \
 	gdb.gdb/unittest.exp \
 	gdb.server/unittest.exp
 
-stamps/check: stamps/build-default
+# Test GDB.
+# First and only argument is the build flavour.
+define test-gdb
+$(MAKE) -C $(builddir_$(1))/gdb \
+	check//unix check//native-gdbserver check//native-extended-gdbserver \
+	TESTS="$(TESTS_NON_FLAKY)"
+endef
+
+override_dh_auto_test-arch:
 ifeq ($(run_tests),yes)
 #	Run the non-flaky tests.
 #
 #	Don't parallelize because things can get racy, and we're not
 #	dealing with that many tests anyway.
-	$(MAKE) -C $(builddir_default)/gdb \
-		check//unix check//native-gdbserver check//native-extended-gdbserver \
-		TESTS="$(TESTS_NON_FLAKY)"
+	$(call test-gdb,default)
+ifeq ($(with_multiarch),yes)
+	$(call test-gdb,multiarch)
+endif
 else
 	@echo "***Tests disabled: $(run_tests) ***"
 endif
-	touch $@
 
-stamps/build-doc: stamps/build-default
-	$(MAKE) -C $(builddir_default)/gdb/doc pdf html
+override_dh_auto_test-indep:
 
-# ---------- installation and packaging targets ----------
-
-clean: debian/control
-	dh_clean
-	rm -rf stamps build
-	rm -f debian/files
+execute_after_dh_clean: debian/control
+	rm -rf build
 
 	if test -f gdb/version.in.backup; then \
 	  mv -f gdb/version.in.backup gdb/version.in; \
@@ -268,33 +294,43 @@ clean: debian/control
 	# updates the copy in the source directory.
 	find bfd -name bfd.info\* | xargs --no-run-if-empty touch
 
-install-pre:
-	dh_prep
-
-install: install-pre
-	: # gdb install
+override_dh_install-arch:
+	# gdb install
 	$(MAKE) -C $(builddir_default) install DESTDIR=$(CURDIR)/debian/tmp
-	rm -rf debian/gdb-doc/usr/share/man
+
+	# Remove files that we don't ship.
+	find $(CURDIR)/debian/tmp/usr/share/locale -type f \
+		\( -name "bfd.mo" -or -name "opcodes.mo" \) -delete
+	find $(CURDIR)/debian/tmp/usr/share/locale -type d -empty -delete
+	rm -rfv $(CURDIR)/debian/tmp/usr/include/*.h \
+		$(CURDIR)/debian/tmp/usr/include/sim/ \
+		$(CURDIR)/debian/tmp/usr/share/doc/ppc/ \
+		$(CURDIR)/debian/tmp/usr/lib/*.a \
+		$(CURDIR)/debian/tmp/usr/lib/*.la
+ifeq ($(with_doc),no)
+	rm -fv $(CURDIR)/debian/tmp/usr/share/info/*.info
+endif
 
 	dh_install
 
-ifeq (,$(filter $(DEB_HOST_ARCH),hurd-amd64))
-	install -m 755 debian/tmp/usr/bin/gcore debian/gdb$(TS)/usr/bin/gcore
-endif
+	install -m 755 debian/gdbtui debian/gdb$(TS)/usr/bin/$(TP)gdbtui
 
-	install -d debian/gdb$(TS)/usr/share/man/man1; \
+	mkdir -p debian/gdb$(TS)/usr/share/man/man1
 	install -m 644 debian/gcore.1 debian/gdb$(TS)/usr/share/man/man1/.
 
 	if [ -x debian/tmp/usr/bin/run ]; then \
 		mv debian/tmp/usr/bin/run \
 		  debian/gdb$(TS)/usr/bin/$(DEB_TARGET_ALIAS)-run; \
 	fi
+ifeq ($(with_doc),yes)
 	if [ -r debian/tmp/usr/share/man/man1/run.1 ]; then \
 		mv debian/tmp/usr/share/man/man1/run.1 \
 		  debian/gdb$(TS)/usr/share/man/man1/$(DEB_TARGET_ALIAS)-run.1; \
 	fi
+endif
+
 ifneq ($(GFDL_INVARIANT_FREE),yes)
-	install -d debian/gdb$(TS)/usr/share/man/man5
+	mkdir -p debian/gdb$(TS)/usr/share/man/man5
 	install -m 644 $(builddir_default)/gdb/doc/gdbinit.5 \
 		debian/gdb$(TS)/usr/share/man/man5/.
 	install -m 644 $(builddir_default)/gdb/doc/gdb.1 \
@@ -304,35 +340,33 @@ ifneq ($(GFDL_INVARIANT_FREE),yes)
 endif
 
 ifneq ($(DEB_CROSS),yes)
-	: # Only ship a global gdbinit for the native GDB.
-	install -d debian/gdb$(TS)/etc/gdb
-	install -d debian/gdb$(TS)/etc/gdb/gdbinit.d
+	# Only ship a global gdbinit for the native GDB.
+	mkdir -p debian/gdb$(TS)/etc/gdb/gdbinit.d
 	install -m 644 debian/gdbinit debian/gdb$(TS)/etc/gdb/
-	: # Likewise gdb-add-index
-	install -m 755 gdb/contrib/gdb-add-index.sh debian/gdb$(TS)/usr/bin/gdb-add-index
+	# Likewise gdb-add-index
+	mv -v $(CURDIR)/debian/tmp/usr/bin/gdb-add-index debian/gdb$(TS)/usr/bin/gdb-add-index
 endif
 
-	rm -f debian/gdb$(TS)/usr/bin/$(TP)gdbtui
-	install -m 755 debian/gdbtui debian/gdb$(TS)/usr/bin/$(TP)gdbtui
-
-	: # gdb-multiarch install
-	install -d debian/gdb-multiarch/usr/bin
+ifeq ($(with_multiarch),yes)
+	# gdb-multiarch install
+	mkdir -p debian/gdb-multiarch/usr/bin
 	install -m 755 $(builddir_multiarch)/gdb/gdb debian/gdb-multiarch/usr/bin/gdb-multiarch
+endif
 
-	: # gdbserver install
 ifneq (,$(filter $(DEB_HOST_ARCH),$(LIBINPROCTRACE_AVAILABLE_ARCHITECTURES)))
-	install -d debian/gdbserver/usr/lib
-	install debian/tmp/usr/lib/libinproctrace.so debian/gdbserver/usr/lib/
+	# libinproctrace (gdbserver) install
+	mkdir -p debian/gdbserver/usr/lib
+	mv -v $(CURDIR)/debian/tmp/usr/lib/libinproctrace.so debian/gdbserver/usr/lib/
 endif
 
 ifneq ($(GFDL_INVARIANT_FREE),yes)
-	install -d debian/gdbserver/usr/share/man/man1
+	mkdir -p debian/gdbserver/usr/share/man/man1
 	install -m 644 $(builddir_default)/gdb/doc/gdbserver.1 \
 		debian/gdbserver/usr/share/man/man1/.
 endif
 
 ifeq ($(with_doc),yes)
-	install -d debian/gdb-doc/usr/share/info
+	mkdir -p debian/gdb-doc/usr/share/info
 	install -m 644 debian/tmp/usr/share/info/gdb.info debian/gdb-doc/usr/share/info/.
 	install -m 644 debian/tmp/usr/share/info/stabs.info debian/gdb-doc/usr/share/info/.
 
@@ -341,21 +375,21 @@ ifeq ($(with_doc),yes)
 		htmldir=/usr/share/doc/gdb-doc/html \
 		install-html install-pdf
 
-	: # This manual documents a long-obsolete facility
-	rm -f debian/gdb-doc/usr/share/info/annota*
-	rm -rf debian/gdb-doc/usr/share/doc/gdb-doc/*/annota*
+	# This manual documents a long-obsolete facility
+	rm -fv debian/gdb-doc/usr/share/info/annota*
+	rm -rfv debian/gdb-doc/usr/share/doc/gdb-doc/*/annota*
 
-	rm -f debian/gdb-doc/usr/share/info/dir*
+	rm -fv debian/gdb-doc/usr/share/info/dir*
 
-	: # Symlink stuff into gdb's doc directory
-	install -d debian/gdb-doc/usr/share/doc/gdb
+	# Symlink stuff into gdb's doc directory
+	mkdir -p debian/gdb-doc/usr/share/doc/gdb
 	ln -s ../gdb-doc/html debian/gdb-doc/usr/share/doc/gdb/html
 	ln -s ../gdb-doc/pdf debian/gdb-doc/usr/share/doc/gdb/pdf
 endif
 
-install-indep: install-pre
-	: # gdb-source install
-	install -d debian/gdb-source/usr/src
+override_dh_install-indep:
+	# gdb-source install
+	mkdir -p debian/gdb-source/usr/src
 	mkdir -p $(builddir_source)
 	tar --exclude build --exclude stamps --exclude .git -cf - . \
 	  | (cd $(builddir_source) && tar -xf -)
@@ -369,8 +403,7 @@ install-indep: install-pre
 	     --sort=name \
 	     $(notdir $(builddir_source))
 
-
-debian/control: debian/control.in debian/control.doc $(FORCE_CONTROL)
+debian/control: debian/control.in debian/control.doc
 	cat debian/control.in \
 		| sed "s/@TS@/$(TS)/g" \
 		> debian/control
@@ -383,65 +416,8 @@ ifeq ($(DEB_CROSS),yes)
 		debian/gdb.install > debian/gdb$(TS).install
 endif
 
-
-gdb_substvars =
-
-build-indep: $(foreach v,$(variants),stamps/build-$(v)) $(if $(filter yes,$(with_doc)),stamps/build-doc)
-build-arch: $(foreach v,$(variants),stamps/build-$(v)) stamps/check
-build: build-arch build-indep
-
-binary-indep: build-indep install install-indep
-	dh_installdocs -i
-	dh_installchangelogs -i
-	dh_strip -i
-	dh_link -i
-	dh_compress -i -X.pdf
-	dh_fixperms -i
-	dh_installdeb -i
-	dh_shlibdeps -i
-	dh_gencontrol -i
-	dh_md5sums -i
-	dh_builddeb -i
-
-binary-arch: build-arch install
+execute_after_dh_installdocs:
 	dh_installdocs -pgdb$(TS) \
 		gdb/NEWS gdb/README gdb/doc/refcard.tex \
-		$(if $(filter yes, $(nodoc_profile)),, \
-		  $(builddir_default)/gdb/doc/refcard.dvi \
-		  $(builddir_default)/gdb/doc/refcard.ps) \
-		gdb/contrib/
-
-	dh_installdocs -pgdbserver gdbserver/README
-	dh_installchangelogs -pgdbserver -pgdb$(TS)
-	dh_lintian
-
-	install -d debian/gdb-multiarch/usr/share/doc
-	ln -s gdb debian/gdb-multiarch/usr/share/doc/gdb-multiarch
-
-	dh_dwz -a
-	dh_strip -pgdb$(TS)
-	dh_strip -a -Ngdb$(TS)
-	dh_link -a
-	dh_compress -a
-	dh_fixperms -a
-	dh_installdeb -a
-	dh_shlibdeps -a
-	dh_gencontrol -a -- $(gdb_substvars)
-	dh_md5sums -a
-	dh_builddeb -a
-
-binary: binary-indep binary-arch
-
-remove-gfdl-files:
-ifeq ($(GFDL_INVARIANT_FREE),yes)
-	rm -vf gdb/doc/*.1
-	rm -vf gdb/doc/*.5
-	rm -vf gdb/doc/*.info*
-	rm -vf readline/readline/doc/*.info
-	rm -vf zlib/contrib/dotzlib/DotZLib.chm
-endif
-
-.PHONY: build build-arch build-indep clean binary-indep binary-arch binary install
-
-.PHONY: FORCE
-FORCE:
+		$(builddir_default)/gdb/doc/refcard.dvi \
+		$(builddir_default)/gdb/doc/refcard.ps

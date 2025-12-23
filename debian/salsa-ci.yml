@@ -4,4 +4,8 @@ include:
   - https://salsa.debian.org/salsa-ci-team/pipeline/raw/master/pipeline-jobs.yml
 
 variables:
-  DEB_BUILD_OPTIONS: 'nocheck'
+  # Disable blhc temporarily.  For some reason -D_FORTIFY_SOURCE=2 is
+  # missing when compiling certain submodules (opcodes, for example).
+  SALSA_CI_DISABLE_BLHC: '1'
+  # Ignore experimental branch.
+  SALSA_CI_IGNORED_BRANCHES: 'debian/experimental'
