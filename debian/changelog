@@ -1,9 +1,60 @@
-gdb (16.3-1deepin1) unstable; urgency=medium
+gdb (17.1-1) unstable; urgency=medium
 
-  [ Mingcong Bai ]
-  * Enable gdbserver for loong64.
+  * d/salsa-ci.yml: Ignore debian/experimental branch.
+  * d/README.Debian: Update links.
+  * d/control.in: Sync with d/control.
+  * d/rules: Add comments to canned recipes.
+  * New upstream version 17.1
+  * d/p/Port-GDB-to-Hurd-x86_64.patch: Remove; upstreamed.
+  * d/p/fix-hurd-amd64-warning-osabi.patch: Remove; upstreamed.
+  * d/copyright: Update.
+  * d/s/lintian-overrides: Update.
+  * d/watch: Update to version 5.
 
- -- lhdjply <lhdjply@126.com>  Fri, 11 Jul 2025 09:54:02 +0800
+ -- Sergio Durigan Junior <sergiodj@debian.org>  Sun, 21 Dec 2025 15:09:18 -0500
+
+gdb (16.3-5) unstable; urgency=medium
+
+  * d/rules: Remove unused FORCE_CONTROL variable.
+  * d/salsa-ci.yml: Disable nocheck, disable blhc pipeline.
+    The package should now support 'make check' out of the box.  Also, the
+    blhc pipeline has been failing for a while due to missing compiler
+    flags when compiling some submodules (opcodes, for example).
+  * d/p/fix-hurd-amd64-warning-osabi.patch: Fix osabi warning on Hurd amd64.
+    (Closes: #1113764)
+
+ -- Sergio Durigan Junior <sergiodj@debian.org>  Fri, 05 Sep 2025 14:20:51 -0400
+
+gdb (16.3-4) unstable; urgency=medium
+
+  * Install gcore on all architectures.
+    - d/gdb.install: Reinstate usr/bin/gcore.
+    - d/rules: Remove conditional to install gcore on non-hurd-amd64, as
+      it's not necessary anymore.
+
+ -- Sergio Durigan Junior <sergiodj@debian.org>  Sun, 24 Aug 2025 13:22:05 -0400
+
+gdb (16.3-3) unstable; urgency=medium
+
+  * d/rules: Remove arch-specific files that we don't ship.
+  * d/rules: Invoke 'rm' with '-v'.
+
+ -- Sergio Durigan Junior <sergiodj@debian.org>  Sat, 23 Aug 2025 22:40:47 -0400
+
+gdb (16.3-2) unstable; urgency=medium
+
+  * d/control{,.in}: Put Debian GDB Team as maintainer.
+    Also, move Héctor and I to Uploaders.
+  * d/gdb.lintian-overrides: Remove mismatched entries.
+  * d/copyright: Fix old-fsf-address-in-copyright-file.
+  * d/compat: Remove file.
+  * d/control: Migrate to debhelper-compat 13.
+  * d/control: Remove unnecessary Rules-Requires-Root binary-targets.
+  * d/control: Remove unnecessary ${python3:Depends}.
+  * d/rules: Modernize; use dh sequencer.
+  * d/s/lintian-overrides: Remove no-dh-sequencer override.
+
+ -- Sergio Durigan Junior <sergiodj@debian.org>  Sat, 23 Aug 2025 20:18:48 -0400
 
 gdb (16.3-1) unstable; urgency=medium
 

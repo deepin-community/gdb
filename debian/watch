@@ -1,3 +1,5 @@
-version=4
-  https://ftp.gnu.org/gnu/gdb/gdb-@ANY_VERSION@@ARCHIVE_EXT@ \
-  debian debian/sanitize-gdb.sh
+Version: 5
+
+Source: https://ftp.gnu.org/gnu/gdb/
+Matching-Pattern: gdb-@ANY_VERSION@@ARCHIVE_EXT@
+Update-Script: debian/sanitize-gdb.sh
